@@ -1,5 +1,9 @@
 {
   "name": "homeydeck-web",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "test": "node --test test/*.test.js"
+  }
 }
