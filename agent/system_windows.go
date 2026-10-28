@@ -20,9 +20,10 @@ import (
 )
 
 const (
-	runKeyPath = `Software\Microsoft\Windows\CurrentVersion\Run`
-	runValue   = "HomeyDeck"
-	exeName    = "homeydeck-agent.exe"
+	runKeyPath       = `Software\Microsoft\Windows\CurrentVersion\Run`
+	runValue         = "HomeyDeck"
+	uninstallKeyPath = `Software\Microsoft\Windows\CurrentVersion\Uninstall\HomeyDeck`
+	exeName          = "homeydeck-agent.exe"
 )
 
 var (
@@ -42,19 +43,25 @@ func dataDir() string {
 	return filepath.Join(base, "HomeyDeck")
 }
 
+var consoleAttached bool
+
 // The agent is built as a GUI program so no console window ever appears.
 // For the install/status commands we borrow the console of the terminal that
 // launched us, if there is one.
 func attachConsole() {
 	const attachParentProcess = ^uintptr(0) // (DWORD)-1
 	if r, _, _ := procAttachConsole.Call(attachParentProcess); r == 0 {
+		os.Stdout, os.Stderr = nil, nil // nowhere to print; dialogs are used instead
 		return
 	}
 	if out, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0); err == nil {
 		os.Stdout, os.Stderr = out, out
+		consoleAttached = true
 	}
 	fmt.Println()
 }
+
+func hasConsole() bool { return consoleAttached }
 
 func singleInstance() (func(), error) {
 	name, _ := windows.UTF16PtrFromString(`Local\HomeyDeckAgent`)
@@ -230,7 +237,7 @@ func enableAutostart(exe string) error {
 		return err
 	}
 	defer k.Close()
-	return k.SetStringValue(runValue, `"`+exe+`"`)
+	return k.SetStringValue(runValue, `"`+exe+`" run`)
 }
 
 func disableAutostart() error {
@@ -255,8 +262,76 @@ func autostartEnabled() bool {
 	return err == nil
 }
 
+// registerUninstaller lists the agent in Windows Settings → Apps, whose
+// Uninstall button runs `homeydeck-agent.exe uninstall`.
+func registerUninstaller(exe string) error {
+	k, _, err := registry.CreateKey(registry.CURRENT_USER, uninstallKeyPath, registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer k.Close()
+	size := uint32(0)
+	if info, err := os.Stat(exe); err == nil {
+		size = uint32(info.Size() / 1024)
+	}
+	for name, value := range map[string]string{
+		"DisplayName":     "HomeyDeck agent",
+		"DisplayVersion":  version,
+		"Publisher":       "HomeyDeck",
+		"DisplayIcon":     exe,
+		"InstallLocation": filepath.Dir(exe),
+		"UninstallString": `"` + exe + `" uninstall`,
+	} {
+		if err := k.SetStringValue(name, value); err != nil {
+			return err
+		}
+	}
+	for name, value := range map[string]uint32{"NoModify": 1, "NoRepair": 1, "EstimatedSize": size} {
+		if err := k.SetDWordValue(name, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func unregisterUninstaller() error {
+	err := registry.DeleteKey(registry.CURRENT_USER, uninstallKeyPath)
+	if err != nil && !errors.Is(err, registry.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// removeDataDir deletes %LOCALAPPDATA%\HomeyDeck. When the running program
+// is the installed copy, Windows won't delete it while it runs, so a hidden
+// cmd.exe finishes the job a couple of seconds after we exit.
+func removeDataDir() error {
+	dir := dataDir()
+	self, _ := os.Executable()
+	if !strings.HasPrefix(strings.ToLower(filepath.Clean(self)), strings.ToLower(dir+string(filepath.Separator))) {
+		var err error
+		for range 5 { // the stopped agent may hold its files for a moment
+			if err = os.RemoveAll(dir); err == nil {
+				return nil
+			}
+			time.Sleep(400 * time.Millisecond)
+		}
+		return err
+	}
+	cmd := exec.Command("cmd.exe")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: windows.CREATE_NO_WINDOW | windows.DETACHED_PROCESS,
+		CmdLine:       `cmd.exe /d /c ping -n 3 127.0.0.1 >nul & rmdir /s /q "` + dir + `"`,
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
+}
+
 func startDetached(exe string) error {
-	cmd := exec.Command(exe)
+	cmd := exec.Command(exe, "run")
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.DETACHED_PROCESS}
 	if err := cmd.Start(); err != nil {
 		return err

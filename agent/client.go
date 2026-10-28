@@ -1,34 +1,33 @@
 package main
 
+// The agent asks the server's /api/agent/poll for work: every 20 s while
+// nobody is looking, and every 2 s while the app is open (the server says
+// which). Between polls it uses no network at all.
+
 import (
+	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math/rand/v2"
 	"net"
 	"net/http"
-	"net/http/httptrace"
 	"net/url"
 	"os"
-	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
-
-	"github.com/coder/websocket"
 )
 
 const (
-	statusEvery    = 20 * time.Second // keep in step with STALE_AFTER_MS on the server
-	steamPollEvery = 5 * time.Second
-	pingEvery      = 30 * time.Second
-	pingTimeout    = 10 * time.Second
-	dialTimeout    = 15 * time.Second
-	minBackoff     = 2 * time.Second
-	maxBackoff     = 30 * time.Second
+	steamPollEvery   = 5 * time.Second
+	defaultPollEvery = 20 * time.Second
+	minPollEvery     = 1 * time.Second
+	maxPollEvery     = 60 * time.Second
+	requestTimeout   = 15 * time.Second
+	minBackoff       = 2 * time.Second
+	maxBackoff       = 60 * time.Second
 )
 
 // errNetworkDown means the server's name doesn't resolve yet, which is what
@@ -37,7 +36,8 @@ const (
 var errNetworkDown = errors.New("network not ready")
 
 type Client struct {
-	cfg Config
+	cfg  Config
+	http *http.Client
 
 	// commands that power the PC down run after the reply has been sent
 	afterReply func(action string)
@@ -47,7 +47,7 @@ func NewClient(cfg Config) *Client {
 	return &Client{cfg: cfg, afterReply: runDeferredAction}
 }
 
-// Run connects and reconnects until ctx is cancelled.
+// Run polls until ctx is cancelled, backing off while the server can't be reached.
 func (c *Client) Run(ctx context.Context) {
 	backoff := minBackoff
 	quiet := false // already logged that the network is down
@@ -58,7 +58,7 @@ func (c *Client) Run(ctx context.Context) {
 			return
 		}
 		if time.Since(started) > time.Minute {
-			backoff = minBackoff // it was a healthy connection, retry quickly
+			backoff = minBackoff // it was working for a while, retry quickly
 		}
 		wait := backoff
 		if errors.Is(err, errNetworkDown) {
@@ -72,7 +72,7 @@ func (c *Client) Run(ctx context.Context) {
 			wait += time.Duration(rand.Int64N(int64(backoff / 2)))
 			backoff = min(backoff*2, maxBackoff)
 			quiet = false
-			log.Printf("disconnected: %v (retrying in %s)", err, wait.Round(time.Second))
+			log.Printf("lost the server: %v (retrying in %s)", err, wait.Round(time.Second))
 		}
 
 		select {
@@ -83,21 +83,7 @@ func (c *Client) Run(ctx context.Context) {
 	}
 }
 
-func (c *Client) wsURL() string {
-	u := c.cfg.ServerURL
-	u = strings.Replace(u, "https://", "wss://", 1)
-	u = strings.Replace(u, "http://", "ws://", 1)
-	return u + "/agent/connect"
-}
-
-type inbound struct {
-	Type   string `json:"type"`
-	ID     string `json:"id"`
-	Action string `json:"action"`
-}
-
 type statusMsg struct {
-	Type          string `json:"type"`
 	Hostname      string `json:"hostname"`
 	SteamRunning  bool   `json:"steamRunning"`
 	UptimeSeconds int64  `json:"uptimeSeconds"`
@@ -105,176 +91,146 @@ type statusMsg struct {
 }
 
 type resultMsg struct {
-	Type  string `json:"type"`
-	ID    string `json:"id"`
-	OK    bool   `json:"ok"`
-	Error string `json:"error,omitempty"`
+	ID     string `json:"id"`
+	Action string `json:"action"`
+	OK     bool   `json:"ok"`
+	Error  string `json:"error,omitempty"`
 }
 
+type pollReply struct {
+	Command *struct {
+		ID     string `json:"id"`
+		Action string `json:"action"`
+	} `json:"command"`
+	PollSeconds float64 `json:"pollSeconds"`
+}
+
+// session polls until a request fails.
 func (c *Client) session(ctx context.Context) error {
-	conn, err := c.dial(ctx)
-	if err != nil {
+	if err := c.networkReady(ctx); err != nil {
 		return err
 	}
-	defer conn.CloseNow()
-	conn.SetReadLimit(16 << 10)
-	log.Printf("connected")
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	var writeMu sync.Mutex
-	send := func(v any) error {
-		raw, _ := json.Marshal(v)
-		writeMu.Lock()
-		defer writeMu.Unlock()
-		wctx, wcancel := context.WithTimeout(ctx, 10*time.Second)
-		defer wcancel()
-		return conn.Write(wctx, websocket.MessageText, raw)
-	}
-
+	log.Printf("polling %s", c.cfg.ServerURL)
 	hostname, _ := os.Hostname()
 	steam := steamRunning()
-	sendStatus := func() error {
-		return send(statusMsg{
-			Type:          "status",
+	lastID := ""
+
+	timer := time.NewTimer(0) // first poll right away
+	defer timer.Stop()
+	steamTick := time.NewTicker(steamPollEvery)
+	defer steamTick.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-steamTick.C:
+			// Report a Steam change right away instead of at the next poll.
+			if now := steamRunning(); now != steam {
+				steam = now
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				timer.Reset(0)
+			}
+			continue
+		case <-timer.C:
+		}
+
+		var reply pollReply
+		err := c.post(ctx, "/api/agent/poll", statusMsg{
 			Hostname:      hostname,
 			SteamRunning:  steam,
 			UptimeSeconds: int64(uptime().Seconds()),
 			AgentVersion:  version,
-		})
-	}
-	if err := sendStatus(); err != nil {
-		return err
-	}
-
-	errc := make(chan error, 2)
-
-	// Writer: periodic status, immediate status when Steam starts or stops, pings.
-	go func() {
-		statusTick := time.NewTicker(statusEvery)
-		steamTick := time.NewTicker(steamPollEvery)
-		pingTick := time.NewTicker(pingEvery)
-		defer statusTick.Stop()
-		defer steamTick.Stop()
-		defer pingTick.Stop()
-		lastTick := time.Now().Round(0) // wall clock, so time spent asleep counts
-		for {
-			var err error
-			select {
-			case <-ctx.Done():
-				return
-			case <-statusTick.C:
-				err = sendStatus()
-			case <-steamTick.C:
-				// A long gap between ticks means Windows was asleep. The old
-				// socket is almost certainly dead, so reconnect right away
-				// instead of waiting for a ping to time out.
-				gap := time.Since(lastTick)
-				lastTick = time.Now().Round(0)
-				if gap > 3*steamPollEvery {
-					err = errors.New("resumed from sleep")
-					break
-				}
-				if now := steamRunning(); now != steam {
-					steam = now
-					err = sendStatus()
-				}
-			case <-pingTick.C:
-				pctx, pcancel := context.WithTimeout(ctx, pingTimeout)
-				err = conn.Ping(pctx)
-				pcancel()
-			}
-			if err != nil {
-				errc <- err
-				return
-			}
+		}, &reply)
+		if err != nil {
+			return err
 		}
-	}()
 
-	// Reader: commands from the server.
-	go func() {
-		for {
-			_, raw, err := conn.Read(ctx)
-			if err != nil {
-				errc <- err
-				return
-			}
-			var msg inbound
-			if json.Unmarshal(raw, &msg) != nil || msg.Type != "command" {
-				continue
-			}
-			log.Printf("command %s", msg.Action)
-			res := resultMsg{Type: "result", ID: msg.ID, OK: true}
-			if err := runAction(msg.Action); err != nil {
+		if cmd := reply.Command; cmd != nil && cmd.ID != lastID {
+			lastID = cmd.ID
+			log.Printf("command %s", cmd.Action)
+			res := resultMsg{ID: cmd.ID, Action: cmd.Action, OK: true}
+			if err := runAction(cmd.Action); err != nil {
 				res.OK, res.Error = false, err.Error()
-				log.Printf("command %s failed: %v", msg.Action, err)
+				log.Printf("command %s failed: %v", cmd.Action, err)
 			}
-			if err := send(res); err != nil {
-				errc <- err
-				return
+			if err := c.post(ctx, "/api/agent/result", res, nil); err != nil {
+				return err
 			}
 			if res.OK {
-				c.afterReply(msg.Action)
+				c.afterReply(cmd.Action)
 			}
+			steam = steamRunning()
 		}
-	}()
-
-	err = <-errc
-	return err
+		timer.Reset(pollInterval(reply.PollSeconds))
+	}
 }
 
-// dial opens the WebSocket on a fresh connection every time, so nothing from
-// a previous attempt (a half-open socket from before a restart or sleep, a
-// stale pooled connection) can be reused. On failure it says which step got
-// stuck, which tells a DNS, firewall or server problem apart.
-func (c *Client) dial(ctx context.Context) (*websocket.Conn, error) {
-	host := ""
-	if u, err := url.Parse(c.cfg.ServerURL); err == nil {
-		host = u.Hostname()
+func pollInterval(seconds float64) time.Duration {
+	if seconds <= 0 {
+		return defaultPollEvery
 	}
-	if host != "" && !isLocalhost(host) {
-		lctx, lcancel := context.WithTimeout(ctx, 5*time.Second)
-		_, err := net.DefaultResolver.LookupHost(lctx, host)
-		lcancel()
-		if err != nil {
-			return nil, fmt.Errorf("%w: %v", errNetworkDown, err)
-		}
-	}
+	return min(max(time.Duration(seconds*float64(time.Second)), minPollEvery), maxPollEvery)
+}
 
-	var step atomic.Value
-	step.Store("starting")
-	trace := &httptrace.ClientTrace{
-		DNSStart:          func(httptrace.DNSStartInfo) { step.Store("resolving the server name") },
-		ConnectStart:      func(_, addr string) { step.Store("connecting to " + addr) },
-		TLSHandshakeStart: func() { step.Store("TLS handshake") },
-		WroteRequest:      func(httptrace.WroteRequestInfo) { step.Store("waiting for the server to answer") },
+// networkReady checks that the server's name resolves.
+func (c *Client) networkReady(ctx context.Context) error {
+	u, err := url.Parse(c.cfg.ServerURL)
+	if err != nil || u.Hostname() == "" || isLocalhost(u.Hostname()) {
+		return nil
 	}
-
-	transport := &http.Transport{
-		Proxy:               http.ProxyFromEnvironment,
-		DialContext:         (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-		TLSHandshakeTimeout: 10 * time.Second,
-		TLSClientConfig:     &tls.Config{NextProtos: []string{"http/1.1"}},
-	}
-	defer transport.CloseIdleConnections()
-
-	dctx, cancel := context.WithTimeout(httptrace.WithClientTrace(ctx, trace), dialTimeout)
+	lctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	conn, resp, err := websocket.Dial(dctx, c.wsURL(), &websocket.DialOptions{
-		HTTPClient: &http.Client{Transport: transport},
-		HTTPHeader: http.Header{"Authorization": {"Bearer " + c.cfg.AgentKey}},
-	})
-	if err != nil {
-		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
-			return nil, errors.New("server rejected the agent key (check AGENT_KEY)")
-		}
-		if resp != nil {
-			return nil, fmt.Errorf("server answered %s", resp.Status)
-		}
-		return nil, fmt.Errorf("%v (stuck at: %s)", err, step.Load())
+	if _, err := net.DefaultResolver.LookupHost(lctx, u.Hostname()); err != nil {
+		return fmt.Errorf("%w: %v", errNetworkDown, err)
 	}
-	return conn, nil
+	return nil
+}
+
+// One client reused across polls, so the TLS connection stays open between
+// fast polls. Idle connections are dropped after 30 s, so a connection that
+// went stale while the PC slept is never reused.
+func (c *Client) httpClient() *http.Client {
+	if c.http == nil {
+		c.http = &http.Client{Timeout: requestTimeout, Transport: &http.Transport{
+			Proxy:               http.ProxyFromEnvironment,
+			DialContext:         (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+			TLSHandshakeTimeout: 10 * time.Second,
+			IdleConnTimeout:     30 * time.Second,
+			MaxIdleConns:        2,
+		}}
+	}
+	return c.http
+}
+
+func (c *Client) post(ctx context.Context, path string, body any, out any) error {
+	raw, _ := json.Marshal(body)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.ServerURL+path, bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.cfg.AgentKey)
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		c.httpClient().CloseIdleConnections()
+		return err
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized:
+		return errors.New("server rejected the agent key (copy a new setup code and install again)")
+	case resp.StatusCode != http.StatusOK:
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		return fmt.Errorf("server answered %s: %s", resp.Status, bytes.TrimSpace(msg))
+	}
+	if out == nil {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 16<<10))
+		return nil
+	}
+	return json.NewDecoder(io.LimitReader(resp.Body, 16<<10)).Decode(out)
 }
 
 // runAction does the part of a command that must succeed before we answer.

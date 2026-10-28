@@ -1,21 +1,11 @@
 # Secrets
-.dev.vars
-*.env
+.env*
 config.json
-
-# Server
-server/node_modules/
-server/.wrangler/
+.vercel/
 
 # Agent
 agent/dist/
 *.exe
-
-# Apple
-apple/**/xcuserdata/
-apple/**/*.xcuserstate
-apple/build/
-DerivedData/
 
 # OS
 .DS_Store

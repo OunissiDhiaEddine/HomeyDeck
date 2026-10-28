@@ -6,20 +6,18 @@ on:
   pull_request:
 
 jobs:
-  server:
+  web:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: server
+        working-directory: web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: server/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
+      - run: npm test
+      - run: node --check public/app.js && node --check public/sw.js
 
   agent:
     runs-on: ubuntu-latest
@@ -40,16 +38,3 @@ jobs:
         with:
           name: homeydeck-agent
           path: agent/dist/homeydeck-agent.exe
-
-  apple:
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build for macOS (unsigned)
-        run: >
-          xcodebuild -project apple/HomeyDeck.xcodeproj -scheme HomeyDeck
-          -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO build
-      - name: Build for iOS (unsigned)
-        run: >
-          xcodebuild -project apple/HomeyDeck.xcodeproj -scheme HomeyDeck
-          -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build

@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"encoding/base64"
+	"testing"
+)
 
 func TestValidateConfig(t *testing.T) {
 	key := "0123456789abcdef0123456789abcdef"
@@ -22,13 +25,23 @@ func TestValidateConfig(t *testing.T) {
 	}
 }
 
-func TestWebSocketURL(t *testing.T) {
-	for in, want := range map[string]string{
-		"https://h.example.dev": "wss://h.example.dev/agent/connect",
-		"http://127.0.0.1:8787": "ws://127.0.0.1:8787/agent/connect",
+func TestParseSetupCode(t *testing.T) {
+	key := "0123456789abcdef0123456789abcdef"
+	code := func(json string) string { return setupPrefix + base64.RawURLEncoding.EncodeToString([]byte(json)) }
+
+	cfg, err := parseSetupCode("  " + code(`{"server":"https://homey-deck.vercel.app/","key":"`+key+`"}`) + "\n")
+	if err != nil || cfg != (Config{"https://homey-deck.vercel.app", key}) {
+		t.Fatalf("got %+v, %v", cfg, err)
+	}
+	for name, text := range map[string]string{
+		"empty":      "",
+		"other text": "hello",
+		"damaged":    setupPrefix + "%%%",
+		"http":       code(`{"server":"http://example.com","key":"` + key + `"}`),
+		"short key":  code(`{"server":"https://example.com","key":"short"}`),
 	} {
-		if got := (&Client{cfg: Config{ServerURL: in}}).wsURL(); got != want {
-			t.Errorf("wsURL(%q) = %q, want %q", in, got, want)
+		if _, err := parseSetupCode(text); err == nil {
+			t.Errorf("%s: accepted %q", name, text)
 		}
 	}
 }

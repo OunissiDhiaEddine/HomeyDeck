@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>HomeyDeck</title>
+  <meta name="description" content="Wake and control your gaming PC.">
+  <meta name="theme-color" content="#0d0f1a">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="HomeyDeck">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" href="/icon-192.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body data-phase="unknown">
+  <div class="glow" aria-hidden="true"></div>
+
+  <header class="bar">
+    <span class="brand">HomeyDeck</span>
+    <button class="icon-btn" id="open-settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6ZM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" transform="translate(-1 0)"/></svg>
+    </button>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="orb">
+        <div class="orb-glow"></div>
+        <div class="orb-ring">
+          <svg viewBox="0 0 24 24" width="46" height="46" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-6v2h3v2H7v-2h3v-2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v9h16V6H4Z"/></svg>
+        </div>
+      </div>
+      <h1 id="hostname">My PC</h1>
+      <p class="state"><span class="dot"></span><span id="phase-title">Checking…</span></p>
+      <p class="detail" id="detail"></p>
+    </section>
+
+    <section class="card setup" id="setup-card" hidden>
+      <div>
+        <h2>Set up HomeyDeck</h2>
+        <p>Paste your app key to connect to your PC.</p>
+      </div>
+      <button class="pill" id="setup-open">Add key</button>
+    </section>
+
+    <section class="card steam">
+      <div class="steam-icon">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M7 7h10a5 5 0 0 1 4.9 6l-.8 3.8a2.6 2.6 0 0 1-4.5 1.2L14.4 16H9.6l-2.2 2a2.6 2.6 0 0 1-4.5-1.2L2.1 13A5 5 0 0 1 7 7Zm1 3v1.5H6.5V13H8v1.5h1.5V13H11v-1.5H9.5V10H8Zm8.5 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm-2 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg>
+      </div>
+      <div class="steam-text">
+        <h2>Steam</h2>
+        <p id="steam-subtitle">Available when the PC is on</p>
+      </div>
+      <div class="steam-action" id="steam-action"></div>
+    </section>
+
+    <section class="actions">
+      <button class="tile wake" id="wake" disabled>
+        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M12 3v8M7.1 6.2a7.5 7.5 0 1 0 9.8 0"/></svg>
+        <span>Wake</span>
+      </button>
+      <button class="tile sleep" id="sleep" disabled>
+        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1Z"/></svg>
+        <span>Sleep</span>
+      </button>
+      <button class="tile restart" id="restart" disabled>
+        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M20 12a8 8 0 1 1-2.6-5.9M20 4v4.5h-4.5"/></svg>
+        <span>Restart</span>
+      </button>
+    </section>
+
+    <p class="updated" id="updated"></p>
+  </main>
+
+  <div class="toast" id="toast" role="alert" hidden>
+    <span id="toast-text"></span>
+    <button class="icon-btn small" id="toast-close" aria-label="Dismiss">✕</button>
+  </div>
+
+  <div class="sheet-backdrop" id="confirm" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-text"></p>
+      <button class="sheet-btn primary" id="confirm-yes"></button>
+      <button class="sheet-btn" id="confirm-no">Cancel</button>
+    </div>
+  </div>
+
+  <div class="sheet-backdrop" id="settings" hidden>
+    <form class="sheet" id="settings-form" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <h2 id="settings-title">Settings</h2>
+      <label for="app-key">App key</label>
+      <input id="app-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste APP_KEY">
+      <p class="hint">The APP_KEY you set in Vercel. It stays on this device.</p>
+      <button class="sheet-btn primary" type="submit">Save</button>
+      <div class="pc-setup">
+        <h3>Set up this PC</h3>
+        <p class="hint">On the Windows PC: download the agent, copy the setup code, then double-click <code>homeydeck-agent.exe</code>.</p>
+        <a class="sheet-btn link" href="https://github.com/OunissiDhiaEddine/HomeyDeck/releases/latest" target="_blank" rel="noopener">Download the agent</a>
+        <button class="sheet-btn" type="button" id="copy-setup">Copy setup code</button>
+        <p class="hint" id="setup-code-status" aria-live="polite"></p>
+      </div>
+      <button class="sheet-btn" type="button" id="settings-cancel">Cancel</button>
+    </form>
+  </div>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
