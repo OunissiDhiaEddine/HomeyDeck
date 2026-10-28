@@ -1,5 +1,6 @@
-import { health } from "../lib/hub.js";
+import { health } from "../lib/pcs.js";
+import { json } from "../lib/http.js";
 
-export function GET(request) {
-  return health(request);
+export function GET() {
+  return json(health(process.env));
 }

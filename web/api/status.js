@@ -1,5 +1,5 @@
-import { status } from "../lib/hub.js";
+import { route } from "../lib/http.js";
+import { status } from "../lib/pcs.js";
 
-export function GET(request) {
-  return status(request);
-}
+const handleGET = route(status);
+export const GET = (request) => handleGET(request);

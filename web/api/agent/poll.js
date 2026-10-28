@@ -1,5 +1,5 @@
-import { agentPoll } from "../../lib/hub.js";
+import { route } from "../../lib/http.js";
+import { agentPoll } from "../../lib/pcs.js";
 
-export function POST(request) {
-  return agentPoll(request);
-}
+const handlePOST = route(agentPoll, { browser: false });
+export const POST = (request) => handlePOST(request);

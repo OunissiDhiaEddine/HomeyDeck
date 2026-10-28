@@ -1,5 +1,5 @@
-import { sendCommand } from "../lib/hub.js";
+import { route } from "../lib/http.js";
+import { sendCommand } from "../lib/pcs.js";
 
-export function POST(request) {
-  return sendCommand(request);
-}
+const handlePOST = route(sendCommand);
+export const POST = (request) => handlePOST(request);

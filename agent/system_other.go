@@ -34,6 +34,7 @@ func canSleep() error                  { return nil }
 func sleepNow() error                  { log.Printf("[dev] would sleep"); return nil }
 func reboot() error                    { log.Printf("[dev] would reboot"); return nil }
 func installBinary() (string, error)   { return os.Executable() }
+func runningInstalledCopy() bool       { return false }
 func enableAutostart(string) error     { return nil }
 func disableAutostart() error          { return nil }
 func autostartEnabled() bool           { return false }
@@ -58,3 +59,12 @@ func messageBox(title, text string, flags uintptr) bool {
 }
 func readClipboard() string { return os.Getenv("HOMEYDECK_FAKE_CLIPBOARD") }
 func clearClipboard()       {}
+
+// Stand-ins for DPAPI and the input dialog during development.
+func protect(data []byte) ([]byte, error)   { return data, nil }
+func unprotect(data []byte) ([]byte, error) { return data, nil }
+func inputBox(title, prompt, initial string) (string, bool) {
+	log.Printf("[input] %s: %s", title, prompt)
+	v := os.Getenv("HOMEYDECK_FAKE_INPUT")
+	return v, v != ""
+}
