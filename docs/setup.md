@@ -15,6 +15,19 @@ Keep them in your password manager. You'll paste APP_KEY into the app and AGENT_
 
 ## 2. Deploy the server
 
+**Easiest: let GitHub deploy it.** In the repo's **Settings → Secrets and variables → Actions**, add four secrets:
+
+| Secret | Value |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | Create one at dash.cloudflare.com/profile/api-tokens with the *Edit Cloudflare Workers* template |
+| `CLOUDFLARE_ACCOUNT_ID` | Shown on your Cloudflare dashboard's Workers & Pages page |
+| `APP_KEY` | The app key from step 1 |
+| `AGENT_KEY` | The agent key from step 1 |
+
+Then run the **Deploy server** workflow from the Actions tab. It also runs on every push to `main` that touches `server/`. The run's summary shows your server URL, and the job fails if the health check or the APP_KEY check fails.
+
+**Or deploy from your machine:**
+
 ```sh
 cd server
 npm install
@@ -35,7 +48,7 @@ curl -H "Authorization: Bearer <APP_KEY>" https://homeydeck.<you>.workers.dev/ap
 
 ## 3. Install the agent on the PC
 
-Build it, from any machine with Go:
+Download `homeydeck-agent.exe` from the latest [GitHub release](https://github.com/OunissiDhiaEddine/HomeyDeck/releases), or build it from any machine with Go:
 
 ```sh
 ./agent/build.sh 1.0.0          # macOS/Linux → agent/dist/homeydeck-agent.exe
@@ -75,6 +88,10 @@ The agent runs in your user session, so it starts when you sign in to Windows. I
 - Sleep uses the standard Windows sleep. On PCs with *Modern Standby* (S0), Wake-on-LAN from sleep depends on the network card. If waking from sleep is unreliable, test from a full shutdown to rule the router out.
 
 ## 4. Run the Mac and iPhone app
+
+**Prebuilt:** each GitHub release has `HomeyDeck-macOS.zip` (ad-hoc signed; right-click → **Open** the first time) and `HomeyDeck-iOS-unsigned.ipa` (install it with Sideloadly or AltStore, which sign it with your Apple ID). Then skip to step 5 below.
+
+**From Xcode:**
 
 1. Open `apple/HomeyDeck.xcodeproj` in Xcode 16 or newer.
 2. Select the **HomeyDeck** target, then **Signing & Capabilities**, and choose your **Team** (your Apple ID works).
