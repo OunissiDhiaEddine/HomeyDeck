@@ -4,6 +4,7 @@
   "installCommand": "",
   "buildCommand": "",
   "outputDirectory": "public",
+  "ignoreCommand": "[ \"$VERCEL_ENV\" != \"production\" ]",
   "functions": {
     "api/command.js": { "maxDuration": 40 }
   },
@@ -13,8 +14,13 @@
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "Referrer-Policy", "value": "no-referrer" },
-        { "key": "X-Frame-Options", "value": "DENY" }
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
       ]
+    },
+    {
+      "source": "/(favicon.ico|icon-192.png|icon-512.png|apple-touch-icon.png|og.png)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }]
     },
     {
       "source": "/sw.js",
