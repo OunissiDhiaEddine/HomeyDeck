@@ -236,6 +236,22 @@ test("a command reaches the agent once and its answer comes back", async () => {
   assert.equal((await admin.send(`/api/status?pc=${pc}`)).data.phase, "sleeping");
 });
 
+test("sleep shows as asleep once the PC stops checking in, a restart until it's back", () => {
+  const now = Date.now();
+  const power = (action, ago) => ({ action, at: now - ago });
+  const fast = (ago) => ({ lastSeen: now - ago, fastUntil: now + 60_000 });
+  const idle = (ago) => ({ lastSeen: now - ago });
+  assert.equal(pcsLib.statusView(fast(1000), null, power("sleep", 2000)).phase, "sleeping");
+  // A fast-polling PC that goes quiet for a few polls is asleep, not still going.
+  assert.equal(pcsLib.statusView(fast(15_000), null, power("sleep", 16_000)).phase, "offline");
+  assert.equal(pcsLib.statusView(fast(15_000), null, null).phase, "offline");
+  assert.equal(pcsLib.statusView(idle(15_000), null, null).phase, "online");
+  assert.equal(pcsLib.statusView(idle(60_000), null, null).phase, "offline");
+  assert.equal(pcsLib.statusView(fast(15_000), { at: now }, power("sleep", 60_000)).phase, "waking");
+  assert.equal(pcsLib.statusView(fast(15_000), null, power("reboot", 16_000)).phase, "restarting");
+  assert.equal(pcsLib.statusView(fast(1000), null, power("reboot", 30_000)).phase, "online");
+});
+
 test("a command the agent doesn't pick up in time stays queued briefly, then is dropped", async () => {
   await db.flush();
   const admin = await adminBrowser();

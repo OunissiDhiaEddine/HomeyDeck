@@ -31,13 +31,14 @@ import { parseMAC, sendMagicPacket } from "./wol.js";
 
 export const ACTIONS = ["launch_steam", "sleep", "reboot"];
 
-export const POLL_IDLE_S = 60;
+export const POLL_IDLE_S = 30;
 export const POLL_FAST_S = 2;
 const FAST_FOR_MS = 90_000; // fast polling lasts this long after the app last asked
 const REFRESH_FAST_MS = 30_000; // ask again when less than this is left
-const STALE_AFTER_MS = 80_000; // one missed idle poll and a bit
+const STALE_AFTER_MS = 50_000; // one missed idle poll and a bit
+const FAST_STALE_MS = 12_000; // a few missed fast polls: it's asleep, off or offline
 const COMMAND_TTL_MS = 90_000; // a command not picked up by then is dropped, never run late
-const COMMAND_WAIT_MS = 55_000; // covers a full idle poll; vercel.json allows the route 60 s
+const COMMAND_WAIT_MS = 40_000; // covers a full idle poll; vercel.json allows the route 60 s
 const POWER_TTL_S = 600;
 const POWER_SETTLE_MS = 20_000; // a poll this long after sleep/restart means it's back
 const WAKE_TTL_S = 180;
@@ -181,20 +182,23 @@ export async function status(request, env) {
   return json(statusView(live.report, woke, power));
 }
 
+/** A fast-polling agent that goes quiet is noticed in seconds, an idle one after a missed poll. */
 function isFresh(s) {
-  return Boolean(s?.lastSeen) && Date.now() - s.lastSeen < STALE_AFTER_MS;
+  if (!s?.lastSeen) return false;
+  return Date.now() - s.lastSeen < (s.fastUntil > s.lastSeen ? FAST_STALE_MS : STALE_AFTER_MS);
 }
 
 /**
  * phase is what the app shows: online, offline, waking (a wake packet went
- * out recently), sleeping or restarting (the PC confirmed the command).
+ * out recently), sleeping (the PC confirmed it and is still checking in)
+ * or restarting (until it's back).
  */
 export function statusView(s, woke, power) {
   const fresh = isFresh(s);
   const back = power && s?.lastSeen > power.at + POWER_SETTLE_MS;
-  let phase = fresh ? "online" : "offline";
-  if (power && !back) phase = power.action === "sleep" ? "sleeping" : "restarting";
-  else if (!fresh && woke) phase = "waking";
+  let phase = fresh ? "online" : woke ? "waking" : "offline";
+  if (power && !back && power.action === "reboot") phase = "restarting";
+  else if (power && !back && fresh) phase = "sleeping";
   const online = phase === "online";
   return {
     phase,

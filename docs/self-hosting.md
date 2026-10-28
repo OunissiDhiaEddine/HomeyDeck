@@ -114,7 +114,7 @@ Vercel's free Hobby plan is for personal, non-commercial use, so don't charge fo
 
 ## Free plan limits
 
-An always-on PC checks in once a minute, which costs one Vercel function call and one Upstash command each time: about 43,000 of each a month. The free plans allow 1,000,000 function calls and 500,000 Upstash commands a month, so about 10 always-on PCs fit, and more if they sleep. Having the app open adds a little on top.
+An always-on PC checks in every 30 seconds, which costs one Vercel function call and one Upstash command each time: about 86,000 of each a month. The free plans allow 1,000,000 function calls and 500,000 Upstash commands a month, so about 5 always-on PCs fit, and more if they sleep. Having the app open adds a little on top.
 
 You can see your usage in Vercel under **Usage**, and in the Upstash console.
 
