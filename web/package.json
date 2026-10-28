@@ -1,6 +1,5 @@
 {
   "name": "homeydeck-web",
   "private": true,
-  "type": "module",
-  "engines": { "node": ">=20" }
+  "type": "module"
 }
