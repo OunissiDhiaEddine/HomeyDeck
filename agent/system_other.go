@@ -34,6 +34,7 @@ func canSleep() error                  { return nil }
 func sleepNow() error                  { log.Printf("[dev] would sleep"); return nil }
 func reboot() error                    { log.Printf("[dev] would reboot"); return nil }
 func installBinary() (string, error)   { return os.Executable() }
+func runningInstalledCopy() bool       { return false }
 func enableAutostart(string) error     { return nil }
 func disableAutostart() error          { return nil }
 func autostartEnabled() bool           { return false }

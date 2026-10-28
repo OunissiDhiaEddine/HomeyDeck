@@ -231,6 +231,12 @@ func installBinary() (string, error) {
 	return dest, os.Rename(tmp, dest)
 }
 
+// runningInstalledCopy reports whether this is the copy in %LOCALAPPDATA%\HomeyDeck.
+func runningInstalledCopy() bool {
+	self, err := os.Executable()
+	return err == nil && strings.EqualFold(filepath.Clean(self), filepath.Join(dataDir(), exeName))
+}
+
 func enableAutostart(exe string) error {
 	k, _, err := registry.CreateKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
 	if err != nil {

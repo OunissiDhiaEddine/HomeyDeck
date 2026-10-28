@@ -107,8 +107,16 @@ func interactive() {
 		messageBox(appName, "That's a setup code from an older HomeyDeck.\n\nSign in to HomeyDeck, open the menu and choose Add PC to get a pairing code.", mbInfo)
 	}
 
-	if _, err := loadConfig(); err == nil {
-		if messageBox(appName, "HomeyDeck is installed on this PC.\n\nUninstall it and delete all of its files?", mbYesNo|mbWarning) {
+	if cfg, err := loadConfig(); err == nil {
+		if !runningInstalledCopy() && messageBox(appName, fmt.Sprintf("HomeyDeck is installed on this PC.\n\nUpdate it to this copy (version %s)? It stays paired.\n\nClick No to uninstall it instead.", version), mbYesNo) {
+			if err := install(cfg); err != nil {
+				messageBox(appName, "Update failed: "+err.Error(), mbError)
+			} else {
+				messageBox(appName, "HomeyDeck is updated and running.", mbInfo)
+			}
+			return
+		}
+		if messageBox(appName, "Uninstall HomeyDeck from this PC and delete all of its files?", mbYesNo|mbWarning) {
 			if err := uninstall(); err != nil {
 				messageBox(appName, "Couldn't remove HomeyDeck: "+err.Error(), mbError)
 			} else {
