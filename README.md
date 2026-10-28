@@ -16,7 +16,7 @@ Wake, check and control your Windows gaming PC from your iPhone or Mac, from any
         └──UDP magic packet──▶ router DDNS:port ──▶ PC network card
 ```
 
-- **`apple/`**: a SwiftUI app for iOS 17+ and macOS 14+, with a menu bar panel on Mac. It sends the Wake-on-LAN packet itself and talks to the server for everything else.
+- **`apple/`**: a SwiftUI app for iOS 17+ and macOS 14+. It sends the Wake-on-LAN packet itself and talks to the server for everything else.
 - **`server/`**: a Cloudflare Worker with one Durable Object. It holds the agent's connection, remembers the last status and forwards commands. It runs on Cloudflare's free plan.
 - **`agent/`**: a small Go program for Windows. It starts hidden at sign-in, keeps one outbound connection to the server (no ports to open), reports Steam status and carries out launch / sleep / restart.
 

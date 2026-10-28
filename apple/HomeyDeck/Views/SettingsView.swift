@@ -22,7 +22,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("homeydeck.you.workers.dev", text: $server)
+                    TextField("Server", text: $server, prompt: Text("homeydeck.you.workers.dev"))
                         .autocorrectionDisabled()
                         #if os(iOS)
                         .textContentType(.URL)
@@ -32,9 +32,9 @@ struct SettingsView: View {
                     HStack {
                         Group {
                             if revealKey {
-                                TextField("App key", text: $appKey)
+                                TextField("App key", text: $appKey, prompt: Text("APP_KEY"))
                             } else {
-                                SecureField("App key", text: $appKey)
+                                SecureField("App key", text: $appKey, prompt: Text("APP_KEY"))
                             }
                         }
                         .autocorrectionDisabled()
@@ -54,19 +54,18 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    TextField("myhome.ddns.net", text: $wakeHost)
+                    TextField("Host", text: $wakeHost, prompt: Text("myhome.ddns.net"))
                         .autocorrectionDisabled()
                         #if os(iOS)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         #endif
-                    TextField("UDP port", text: $wakePort)
+                    TextField("UDP port", text: $wakePort, prompt: Text("9"))
                         #if os(iOS)
                         .keyboardType(.numberPad)
                         #endif
-                    TextField("MAC address, e.g. AA:BB:CC:DD:EE:FF", text: $mac)
+                    TextField("MAC address", text: $mac, prompt: Text("AA:BB:CC:DD:EE:FF"))
                         .autocorrectionDisabled()
-                        .font(.body.monospaced())
                         #if os(iOS)
                         .textInputAutocapitalization(.characters)
                         #endif
