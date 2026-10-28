@@ -1,0 +1,57 @@
+name: Deploy server
+
+on:
+  push:
+    branches: [main]
+    paths: ["server/**", ".github/workflows/deploy-server.yml"]
+  workflow_dispatch:
+
+concurrency: deploy-server
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - name: Check secrets
+        if: env.HAS_TOKEN != 'true'
+        run: echo "::warning::CLOUDFLARE_API_TOKEN is not set, skipping deploy. See docs/setup.md."
+      - uses: actions/checkout@v4
+        if: env.HAS_TOKEN == 'true'
+      - uses: actions/setup-node@v4
+        if: env.HAS_TOKEN == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+        if: env.HAS_TOKEN == 'true'
+      - name: Deploy Worker and set secrets
+        id: deploy
+        if: env.HAS_TOKEN == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: server
+          packageManager: npm
+          secrets: |
+            APP_KEY
+            AGENT_KEY
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
+          AGENT_KEY: ${{ secrets.AGENT_KEY }}
+      - name: Smoke test
+        if: env.HAS_TOKEN == 'true'
+        env:
+          URL: ${{ steps.deploy.outputs.deployment-url }}
+          APP_KEY: ${{ secrets.APP_KEY }}
+        run: |
+          echo "Deployed to $URL"
+          echo "### Server URL: $URL" >> "$GITHUB_STEP_SUMMARY"
+          for i in 1 2 3 4 5; do curl -fsS "$URL/health" && break; sleep 5; done
+          curl -fsS -H "Authorization: Bearer $APP_KEY" "$URL/api/status"
