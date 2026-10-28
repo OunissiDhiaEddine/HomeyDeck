@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+
+  agent:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+      - run: go vet ./...
+      - run: GOOS=windows go vet ./...
+      - run: go test ./...
+      - run: ./build.sh ${{ github.sha }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homeydeck-agent
+          path: agent/dist/homeydeck-agent.exe
+
+  apple:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build for macOS (unsigned)
+        run: >
+          xcodebuild -project apple/HomeyDeck.xcodeproj -scheme HomeyDeck
+          -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO build
+      - name: Build for iOS (unsigned)
+        run: >
+          xcodebuild -project apple/HomeyDeck.xcodeproj -scheme HomeyDeck
+          -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build

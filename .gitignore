@@ -1,0 +1,22 @@
+# Secrets
+.dev.vars
+*.env
+config.json
+
+# Server
+server/node_modules/
+server/.wrangler/
+
+# Agent
+agent/dist/
+*.exe
+
+# Apple
+apple/**/xcuserdata/
+apple/**/*.xcuserstate
+apple/build/
+DerivedData/
+
+# OS
+.DS_Store
+Thumbs.db
