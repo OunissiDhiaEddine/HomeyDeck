@@ -2,6 +2,10 @@
 // dependencies. Vercel's Upstash integration sets KV_REST_API_URL and
 // KV_REST_API_TOKEN; a database connected straight from Upstash uses the
 // UPSTASH_REDIS_REST_* names instead.
+//
+// Upstash bills every command, including each one inside a pipeline and each
+// redis.call inside a Lua script (plus one for the EVAL itself). So scripts
+// are only used where something must be atomic, never to save commands.
 
 export function redisConfig(env = process.env) {
   const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL || "";
@@ -31,4 +35,17 @@ export async function pipeline(commands, env = process.env) {
 export async function command(cmd, env = process.env) {
   const [result] = await pipeline([cmd], env);
   return result;
+}
+
+/** Runs a Lua script atomically. */
+export function evalScript(script, keys, args, env = process.env) {
+  return command(["EVAL", script, keys.length, ...keys, ...args], env);
+}
+
+/** HGETALL's flat [field, value, ...] list as an object, or null if the key is missing. */
+export function hash(flat) {
+  if (!Array.isArray(flat) || flat.length === 0) return null;
+  const out = {};
+  for (let i = 0; i < flat.length; i += 2) out[flat[i]] = flat[i + 1];
+  return out;
 }
