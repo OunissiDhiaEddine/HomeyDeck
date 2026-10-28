@@ -94,18 +94,49 @@ func steamRunning() bool {
 }
 
 func launchSteam() error {
+	// Ask for the normal library window. If Steam is set to start in Big
+	// Picture, close Big Picture once Steam is up so the desktop client stays.
 	if exe := steamExePath(); exe != "" {
-		cmd := exec.Command(exe)
+		cmd := exec.Command(exe, "steam://open/main")
 		cmd.Dir = filepath.Dir(exe)
 		if err := cmd.Start(); err == nil {
 			_ = cmd.Process.Release()
+			go leaveBigPicture(exe)
 			return nil
 		}
 	}
 	// Fall back to the steam:// protocol handler.
-	cmd := exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", "steam://open/main")
-	if err := cmd.Start(); err != nil {
+	if err := openSteamURL("steam://open/main"); err != nil {
 		return fmt.Errorf("could not start Steam: %w", err)
+	}
+	go leaveBigPicture("")
+	return nil
+}
+
+// leaveBigPicture sends steam://close/bigpicture a few times while Steam
+// finishes starting. It does nothing if Steam is already on the desktop UI.
+func leaveBigPicture(exe string) {
+	for _, wait := range []time.Duration{8 * time.Second, 12 * time.Second, 20 * time.Second} {
+		time.Sleep(wait)
+		if !steamRunning() {
+			continue
+		}
+		if exe != "" {
+			cmd := exec.Command(exe, "steam://close/bigpicture")
+			cmd.Dir = filepath.Dir(exe)
+			if cmd.Start() == nil {
+				_ = cmd.Process.Release()
+				continue
+			}
+		}
+		_ = openSteamURL("steam://close/bigpicture")
+	}
+}
+
+func openSteamURL(u string) error {
+	cmd := exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", u)
+	if err := cmd.Start(); err != nil {
+		return err
 	}
 	_ = cmd.Process.Release()
 	return nil

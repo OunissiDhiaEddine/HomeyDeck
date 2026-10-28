@@ -53,13 +53,19 @@ enum Keychain {
     private static let service = "app.homeydeck"
 
     private static func baseQuery(_ account: String) -> [String: Any] {
-        [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            // Keeps macOS on the modern keychain, with no password prompts.
-            kSecUseDataProtectionKeychain as String: true,
         ]
+        #if os(iOS)
+        query[kSecUseDataProtectionKeychain as String] = true
+        #endif
+        // On macOS the data protection keychain needs a team-signed
+        // keychain-access-groups entitlement, which ad-hoc and free-account
+        // builds don't have (SecItemAdd fails with -34018), so the Mac app
+        // uses the login keychain instead.
+        return query
     }
 
     static func read(account: String) -> String? {
@@ -72,12 +78,24 @@ enum Keychain {
         return String(data: data, encoding: .utf8)
     }
 
-    static func save(_ value: String, account: String) {
-        SecItemDelete(baseQuery(account) as CFDictionary)
-        guard !value.isEmpty else { return }
-        var query = baseQuery(account)
-        query[kSecValueData as String] = Data(value.utf8)
-        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        SecItemAdd(query as CFDictionary, nil)
+    @discardableResult
+    static func save(_ value: String, account: String) -> Bool {
+        let query = baseQuery(account)
+        guard !value.isEmpty else {
+            let status = SecItemDelete(query as CFDictionary)
+            return status == errSecSuccess || status == errSecItemNotFound
+        }
+        let data = Data(value.utf8)
+        var status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if status == errSecItemNotFound {
+            var add = query
+            add[kSecValueData as String] = data
+            add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            status = SecItemAdd(add as CFDictionary, nil)
+        }
+        if status != errSecSuccess {
+            NSLog("HomeyDeck: saving %@ to the Keychain failed (OSStatus %d)", account, status)
+        }
+        return status == errSecSuccess
     }
 }

@@ -2,24 +2,19 @@ import SwiftUI
 
 @main
 struct HomeyDeckApp: App {
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #endif
     @State private var model = DeckModel()
 
     var body: some Scene {
         #if os(macOS)
-        WindowGroup(id: "main") {
+        Window("HomeyDeck", id: "main") {
             DeckView()
                 .environment(model)
         }
         .defaultSize(width: 440, height: 680)
         .windowResizability(.contentMinSize)
-
-        MenuBarExtra {
-            MenuBarPanel()
-                .environment(model)
-        } label: {
-            Image(systemName: model.phase == .online ? "power.circle.fill" : "power.circle")
-        }
-        .menuBarExtraStyle(.window)
         #else
         WindowGroup {
             DeckView()
@@ -28,3 +23,10 @@ struct HomeyDeckApp: App {
         #endif
     }
 }
+
+#if os(macOS)
+/// Quits the app when its window closes, so nothing keeps running in the background.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
+#endif

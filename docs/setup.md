@@ -101,7 +101,7 @@ The agent runs in your user session, so it starts when you sign in to Windows. I
    - **Server:** your Worker URL and APP_KEY. Tap *Test connection*.
    - **Wake-on-LAN:** your DDNS hostname, the UDP port you forwarded, and the PC's MAC address. You can get the MAC by running `getmac /v` on the PC; use the *Physical Address* of the wired adapter.
 
-On a Mac, HomeyDeck also adds a power icon to the menu bar, so you can wake, launch Steam, sleep or restart without opening the window. Sleep and restart ask for a second click to confirm.
+On a Mac, HomeyDeck runs only while its window is open. Closing the window quits the app.
 
 **iPhone signing:** with a free Apple ID, apps you install on an iPhone stop working after 7 days, and you reinstall from Xcode to renew them. A paid Apple Developer account ($99 a year) gives you 1-year builds, and you can also use TestFlight.
 
