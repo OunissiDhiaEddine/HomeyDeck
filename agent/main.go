@@ -3,14 +3,15 @@
 // It polls the HomeyDeck server over HTTPS, reports whether Steam is
 // running, and carries out launch_steam / sleep / reboot commands.
 //
-// Installing needs no terminal: copy the setup code from the HomeyDeck app
-// (Settings → Set up this PC), then double-click homeydeck-agent.exe.
-// Double-clicking it again, or removing "HomeyDeck agent" in Windows
-// Settings → Apps, uninstalls it and deletes everything it saved.
+// Installing needs no terminal: in HomeyDeck choose Add PC and copy the
+// pairing code, then double-click homeydeck-agent.exe (or type the code into
+// the box it shows). Double-clicking it again, or removing "HomeyDeck agent"
+// in Windows Settings → Apps, uninstalls it and deletes everything it saved.
+// It also uninstalls itself when the PC is removed from the account.
 //
 // The same things work from a terminal:
 //
-//	homeydeck-agent.exe install [--server https://you.vercel.app --key <AGENT_KEY>]
+//	homeydeck-agent.exe install [--code homey-deck.vercel.app/K7P2X-M9Q4T]
 //	homeydeck-agent.exe uninstall
 //	homeydeck-agent.exe status
 //	homeydeck-agent.exe run       (what starts hidden at sign-in)
@@ -29,6 +30,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 )
@@ -38,9 +40,17 @@ var version = "dev"
 
 const appName = "HomeyDeck"
 
+// Config is what the agent keeps in %LOCALAPPDATA%\HomeyDeck\config.json.
+// The token is encrypted with Windows DPAPI on disk.
 type Config struct {
 	ServerURL string `json:"server_url"`
-	AgentKey  string `json:"agent_key"`
+	Token     string `json:"-"`
+}
+
+type configFile struct {
+	ServerURL string `json:"server_url"`
+	Token     string `json:"token_dpapi,omitempty"`
+	AgentKey  string `json:"agent_key,omitempty"` // v0.2, before accounts
 }
 
 func main() {
@@ -82,24 +92,19 @@ func main() {
 	}
 }
 
-// interactive is what a double-click does: install from the setup code on
-// the clipboard, or offer to uninstall when there's no code and it's installed.
+// interactive is what a double-click does: pair with the code on the
+// clipboard, offer to uninstall when it's already set up, or ask for the code.
 func interactive() {
-	if cfg, err := parseSetupCode(readClipboard()); err == nil {
-		host := cfg.ServerURL
-		if u, err := url.Parse(cfg.ServerURL); err == nil {
-			host = u.Host
-		}
-		if !messageBox(appName, fmt.Sprintf("Install the HomeyDeck agent for %s?\n\nIt runs hidden in the background and starts when you sign in.", host), mbYesNo) {
+	clip := readClipboard()
+	if code, err := parsePairCode(clip); err == nil {
+		if !messageBox(appName, fmt.Sprintf("Add this PC to HomeyDeck at %s?\n\nThe agent runs hidden in the background and starts when you sign in.", code.host()), mbYesNo) {
 			return
 		}
-		clearClipboard() // the code holds the agent key
-		if err := install(cfg); err != nil {
-			messageBox(appName, "Install failed: "+err.Error(), mbError)
-			return
-		}
-		messageBox(appName, "HomeyDeck is installed and running.\n\nTo remove it, use Windows Settings → Apps, or double-click this file again.", mbInfo)
+		pairInteractive(code, true)
 		return
+	}
+	if strings.HasPrefix(clip, legacySetupPrefix) {
+		messageBox(appName, "That's a setup code from an older HomeyDeck.\n\nSign in to HomeyDeck, open the menu and choose Add PC to get a pairing code.", mbInfo)
 	}
 
 	if _, err := loadConfig(); err == nil {
@@ -113,7 +118,36 @@ func interactive() {
 		return
 	}
 
-	messageBox(appName, "To install, first copy the setup code:\n\n1. Open HomeyDeck in a browser on this PC\n2. Settings → Set up this PC → Copy setup code\n3. Double-click this file again", mbInfo)
+	typed := ""
+	for {
+		text, ok := inputBox(appName, "Type the pairing code from HomeyDeck (menu → Add PC), including the address before it, like homey-deck.vercel.app/K7P2X-M9Q4T.\n\nOr copy it on this PC and double-click homeydeck-agent.exe again.", typed)
+		if !ok {
+			return
+		}
+		code, err := parsePairCode(text)
+		if err != nil {
+			messageBox(appName, err.Error(), mbWarning)
+			typed = text
+			continue
+		}
+		pairInteractive(code, false)
+		return
+	}
+}
+
+func pairInteractive(code PairCode, fromClipboard bool) {
+	cfg, err := pair(code)
+	if fromClipboard {
+		clearClipboard()
+	}
+	if err == nil {
+		err = install(cfg)
+	}
+	if err != nil {
+		messageBox(appName, "Couldn't add this PC: "+err.Error(), mbError)
+		return
+	}
+	messageBox(appName, "This PC is now in HomeyDeck, and the agent is running.\n\nTo remove it, use Windows Settings → Apps, or double-click this file again.", mbInfo)
 }
 
 func run() {
@@ -129,7 +163,7 @@ func run() {
 
 	cfg, err := loadConfig()
 	if err != nil {
-		log.Printf("not starting: %v (install it first)", err)
+		log.Printf("not starting: %v (pair it first)", err)
 		return
 	}
 
@@ -137,60 +171,110 @@ func run() {
 	defer stop()
 
 	log.Printf("homeydeck-agent %s starting, server %s", version, cfg.ServerURL)
-	NewClient(cfg).Run(ctx)
+	if err := NewClient(cfg).Run(ctx); errors.Is(err, errRemoved) {
+		log.Printf("this PC was removed from its HomeyDeck account, uninstalling")
+		uninstallErr := uninstall()
+		if uninstallErr != nil {
+			log.Printf("uninstall: %v", uninstallErr)
+		}
+		messageBox(appName, "This PC was removed from your HomeyDeck account, so HomeyDeck uninstalled itself.\n\nTo add it again, choose Add PC in HomeyDeck.", mbInfo)
+		return
+	}
 	log.Printf("stopped")
 }
 
 // --- config ------------------------------------------------------------------
 
-const setupPrefix = "homeydeck-setup:" // keep in step with SETUP_PREFIX in web/lib/hub.js
+const (
+	pairPrefix        = "homeydeck-pair:"  // keep in step with PAIR_PREFIX in web/lib/pcs.js
+	legacySetupPrefix = "homeydeck-setup:" // v0.2
+)
 
-// parseSetupCode reads the code the app's "Copy setup code" button makes.
-func parseSetupCode(text string) (Config, error) {
-	var cfg Config
-	text = strings.TrimSpace(text)
-	if !strings.HasPrefix(text, setupPrefix) {
-		return cfg, errors.New("not a setup code")
+// PairCode is a one-time code from HomeyDeck → Add PC, and the server it's for.
+type PairCode struct {
+	Server string
+	Code   string
+}
+
+func (p PairCode) host() string {
+	if u, err := url.Parse(p.Server); err == nil {
+		return u.Host
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(text[len(setupPrefix):], "="))
-	if err != nil {
-		return cfg, errors.New("the setup code is damaged, copy it again")
+	return p.Server
+}
+
+var codeChars = regexp.MustCompile(`[^0-9A-Za-z]`)
+
+// parsePairCode reads "homeydeck-pair:host/CODE", as copied from the app, or
+// "host/CODE" as typed. The server is https unless it's this computer.
+func parsePairCode(text string) (PairCode, error) {
+	text = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(text), pairPrefix))
+	slash := strings.LastIndex(text, "/")
+	if slash < 0 {
+		return PairCode{}, errors.New("include the address before the code, like homey-deck.vercel.app/K7P2X-M9Q4T")
 	}
-	var code struct {
-		Server string `json:"server"`
-		Key    string `json:"key"`
+	server, code := strings.TrimRight(text[:slash], "/"), strings.ToUpper(codeChars.ReplaceAllString(text[slash+1:], ""))
+	if !strings.Contains(server, "://") {
+		scheme := "https://"
+		if u, err := url.Parse("http://" + server); err == nil && isLocalhost(u.Hostname()) {
+			scheme = "http://"
+		}
+		server = scheme + server
 	}
-	if err := json.Unmarshal(raw, &code); err != nil {
-		return cfg, errors.New("the setup code is damaged, copy it again")
+	if len(code) != 10 {
+		return PairCode{}, errors.New("the pairing code should have 10 letters and digits, like K7P2X-M9Q4T")
 	}
-	cfg = Config{ServerURL: strings.TrimRight(code.Server, "/"), AgentKey: code.Key}
-	return cfg, validateConfig(cfg)
+	if err := validateServer(server); err != nil {
+		return PairCode{}, err
+	}
+	return PairCode{Server: server, Code: code}, nil
 }
 
 func configPath() string { return filepath.Join(dataDir(), "config.json") }
 
+var errNotPaired = errors.New("this PC isn't paired with HomeyDeck yet")
+
 func loadConfig() (Config, error) {
-	var cfg Config
+	var file configFile
 	raw, err := os.ReadFile(configPath())
 	if err != nil {
-		return cfg, fmt.Errorf("reading config: %w", err)
+		return Config{}, errNotPaired
 	}
-	if err := json.Unmarshal(raw, &cfg); err != nil {
-		return cfg, fmt.Errorf("parsing %s: %w", configPath(), err)
+	if err := json.Unmarshal(raw, &file); err != nil {
+		return Config{}, fmt.Errorf("parsing %s: %w", configPath(), err)
 	}
+	if file.Token == "" {
+		return Config{}, errNotPaired // a v0.2 install, from before accounts
+	}
+	sealed, err := base64.StdEncoding.DecodeString(file.Token)
+	if err != nil {
+		return Config{}, errNotPaired
+	}
+	token, err := unprotect(sealed)
+	if err != nil {
+		return Config{}, fmt.Errorf("reading the saved token: %w", err)
+	}
+	cfg := Config{ServerURL: file.ServerURL, Token: string(token)}
 	return cfg, validateConfig(cfg)
 }
 
-func validateConfig(cfg Config) error {
-	u, err := url.Parse(cfg.ServerURL)
+func validateServer(server string) error {
+	u, err := url.Parse(server)
 	if err != nil || u.Host == "" {
-		return errors.New("server URL is not valid")
+		return errors.New("the server address is not valid")
 	}
 	if u.Scheme != "https" && !isLocalhost(u.Hostname()) {
-		return errors.New("server URL must start with https:// (plain http is only allowed for localhost)")
+		return errors.New("the server address must start with https:// (plain http is only allowed for localhost)")
 	}
-	if len(cfg.AgentKey) < 32 {
-		return errors.New("agent key must be at least 32 characters")
+	return nil
+}
+
+func validateConfig(cfg Config) error {
+	if err := validateServer(cfg.ServerURL); err != nil {
+		return err
+	}
+	if len(cfg.Token) < 40 || !strings.Contains(cfg.Token, ".") {
+		return errNotPaired
 	}
 	return nil
 }
@@ -203,7 +287,11 @@ func saveConfig(cfg Config) error {
 	if err := os.MkdirAll(dataDir(), 0o700); err != nil {
 		return err
 	}
-	raw, _ := json.MarshalIndent(cfg, "", "  ")
+	sealed, err := protect([]byte(cfg.Token))
+	if err != nil {
+		return fmt.Errorf("encrypting the token: %w", err)
+	}
+	raw, _ := json.MarshalIndent(configFile{ServerURL: cfg.ServerURL, Token: base64.StdEncoding.EncodeToString(sealed)}, "", "  ")
 	return os.WriteFile(configPath(), raw, 0o600)
 }
 
@@ -211,26 +299,33 @@ func saveConfig(cfg Config) error {
 
 func installFromArgs(args []string) error {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
-	server := fs.String("server", "", "HomeyDeck server URL, e.g. https://homey-deck.vercel.app")
-	key := fs.String("key", "", "the AGENT_KEY you set on the server")
+	codeText := fs.String("code", "", "pairing code from HomeyDeck → Add PC, like homey-deck.vercel.app/K7P2X-M9Q4T")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	cfg := Config{ServerURL: strings.TrimRight(*server, "/"), AgentKey: *key}
-	if cfg.ServerURL == "" && cfg.AgentKey == "" {
-		// No flags: use a copied setup code, or keep the existing config (an update).
-		if fromCode, err := parseSetupCode(readClipboard()); err == nil {
-			cfg = fromCode
+	var cfg Config
+	switch {
+	case *codeText != "":
+		code, err := parsePairCode(*codeText)
+		if err != nil {
+			return err
+		}
+		if cfg, err = pair(code); err != nil {
+			return err
+		}
+	default:
+		// No code given: use a copied one, or keep the existing pairing (an update).
+		if code, err := parsePairCode(readClipboard()); err == nil {
 			clearClipboard()
+			if cfg, err = pair(code); err != nil {
+				return err
+			}
 		} else if existing, err := loadConfig(); err == nil {
 			cfg = existing
 		} else {
-			return errors.New("copy the setup code from the app first, or pass --server and --key")
+			return errors.New("copy a pairing code from HomeyDeck → Add PC first, or pass --code")
 		}
-	}
-	if err := validateConfig(cfg); err != nil {
-		return err
 	}
 	if err := install(cfg); err != nil {
 		return err

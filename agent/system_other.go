@@ -58,3 +58,12 @@ func messageBox(title, text string, flags uintptr) bool {
 }
 func readClipboard() string { return os.Getenv("HOMEYDECK_FAKE_CLIPBOARD") }
 func clearClipboard()       {}
+
+// Stand-ins for DPAPI and the input dialog during development.
+func protect(data []byte) ([]byte, error)   { return data, nil }
+func unprotect(data []byte) ([]byte, error) { return data, nil }
+func inputBox(title, prompt, initial string) (string, bool) {
+	log.Printf("[input] %s: %s", title, prompt)
+	v := os.Getenv("HOMEYDECK_FAKE_INPUT")
+	return v, v != ""
+}

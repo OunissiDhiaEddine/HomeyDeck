@@ -37,7 +37,7 @@ const FAST_FOR_MS = 90_000; // fast polling lasts this long after the app last a
 const REFRESH_FAST_MS = 30_000; // ask again when less than this is left
 const STALE_AFTER_MS = 80_000; // one missed idle poll and a bit
 const COMMAND_TTL_MS = 90_000; // a command not picked up by then is dropped, never run late
-const COMMAND_WAIT_MS = 25_000;
+const COMMAND_WAIT_MS = 55_000; // covers a full idle poll; vercel.json allows the route 60 s
 const POWER_TTL_S = 600;
 const POWER_SETTLE_MS = 20_000; // a poll this long after sleep/restart means it's back
 const WAKE_TTL_S = 180;
@@ -223,9 +223,10 @@ export async function sendCommand(request, env, { waitMs = COMMAND_WAIT_MS, step
   const id = crypto.randomUUID();
   await command(["APPEND", k.live, `\ncmd ${JSON.stringify({ id, action, at: Date.now() })}\nviewer`], env);
 
-  const deadline = Date.now() + waitMs;
-  while (Date.now() < deadline) {
-    await sleep(stepMs);
+  const started = Date.now();
+  while (Date.now() - started < waitMs) {
+    // Fast at first, when a fast-polling agent answers; then less often.
+    await sleep(Date.now() - started < 6000 ? stepMs : 2 * stepMs);
     const result = parse(await command(["GET", `res:${uid}:${pc}:${id}`], env));
     if (!result) continue;
     if (result.ok && (action === "sleep" || action === "reboot")) {
@@ -233,8 +234,8 @@ export async function sendCommand(request, env, { waitMs = COMMAND_WAIT_MS, step
     }
     return json({ ok: result.ok, error: result.error }, result.ok ? 200 : 502);
   }
-  // The agent was polling slowly. It still gets the command at its next
-  // poll, which is within the command's 90 seconds.
+  // The agent missed its poll. It still gets the command if it polls
+  // within the command's 90 seconds, and never after.
   return json({ ok: true, pending: true });
 }
 

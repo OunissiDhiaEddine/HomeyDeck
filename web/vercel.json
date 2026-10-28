@@ -6,7 +6,7 @@
   "outputDirectory": "public",
   "ignoreCommand": "[ \"$VERCEL_ENV\" != \"production\" ]",
   "functions": {
-    "api/command.js": { "maxDuration": 40 }
+    "api/command.js": { "maxDuration": 60 }
   },
   "headers": [
     {
