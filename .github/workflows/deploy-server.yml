@@ -19,6 +19,7 @@ jobs:
     steps:
       - name: Check secrets
         if: env.HAS_TOKEN != 'true'
+        working-directory: .
         run: echo "::warning::CLOUDFLARE_API_TOKEN is not set, skipping deploy. See docs/setup.md."
       - uses: actions/checkout@v4
         if: env.HAS_TOKEN == 'true'
