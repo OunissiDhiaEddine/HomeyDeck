@@ -42,7 +42,7 @@ To **remove** the agent, use Windows **Settings → Apps → HomeyDeck agent →
 ```
 
 - **`web/`**: the Vercel project. `public/` is the installable web app, `api/` the server functions, and `lib/` their shared code. There is no build step and there are no dependencies.
-- **`agent/`**: a small Go program for Windows. It starts hidden at sign-in, asks the server for work every 60 seconds (every 2 seconds while someone is using the app), reports Steam status, and carries out launch / sleep / restart. It never accepts inbound connections. One released exe works with any HomeyDeck server, because the pairing code carries the server's address.
+- **`agent/`**: a small Go program for Windows. It starts hidden at sign-in, asks the server for work every 30 seconds (every 2 seconds while someone is using the app), reports Steam status, and carries out launch / sleep / restart. It never accepts inbound connections. One released exe works with any HomeyDeck server, because the pairing code carries the server's address.
 
 ### Configuration
 
@@ -76,11 +76,11 @@ Upstash bills every command, including each one in a pipeline or Lua script, so 
 
 | Request | Upstash commands |
 |---|---|
-| Agent check-in (every 60 s idle) | 1 |
+| Agent check-in (every 30 s idle) | 1 |
 | App status refresh | 2, plus 1 about once a minute while you're using it |
 | Wake, command | 2 to 4, plus a check each second or two until the PC answers |
 
-An always-on PC costs about 43,000 Upstash commands and 43,000 Vercel function calls a month, against free limits of 500,000 and 1,000,000. That's about 10 always-on PCs per deployment, more if they sleep.
+An always-on PC costs about 86,000 Upstash commands and 86,000 Vercel function calls a month, against free limits of 500,000 and 1,000,000. That's about 5 always-on PCs per deployment, more if they sleep, as most gaming PCs do.
 
 ## Development
 

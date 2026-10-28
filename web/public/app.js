@@ -256,7 +256,7 @@ async function run(label, fn) {
   render();
   try {
     const result = await fn();
-    if (result?.pending) showError(`${label}: sent. The PC will pick it up within a minute.`, "info");
+    if (result?.pending) showError(`${label}: sent. The PC will pick it up within 30 seconds.`, "info");
   } catch (err) {
     showError(`${label}: ${err.message}`);
   } finally {
