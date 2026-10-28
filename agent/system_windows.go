@@ -120,12 +120,15 @@ func launchSteam() error {
 	return nil
 }
 
-// leaveBigPicture sends steam://close/bigpicture a few times while Steam
-// finishes starting. It does nothing if Steam is already on the desktop UI.
+// leaveBigPicture closes Big Picture once, if Steam opens in it, so the
+// desktop client stays. It only touches Steam when the Big Picture window is
+// actually showing: running steam.exe again would bring the library window
+// back even after the user closed it.
 func leaveBigPicture(exe string) {
-	for _, wait := range []time.Duration{8 * time.Second, 12 * time.Second, 20 * time.Second} {
-		time.Sleep(wait)
-		if !steamRunning() {
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(2 * time.Second)
+		if !bigPictureShowing() {
 			continue
 		}
 		if exe != "" {
@@ -133,11 +136,20 @@ func leaveBigPicture(exe string) {
 			cmd.Dir = filepath.Dir(exe)
 			if cmd.Start() == nil {
 				_ = cmd.Process.Release()
-				continue
+				return
 			}
 		}
 		_ = openSteamURL("steam://close/bigpicture")
+		return
 	}
+}
+
+var procFindWindow = user32.NewProc("FindWindowW")
+
+func bigPictureShowing() bool {
+	title, _ := windows.UTF16PtrFromString("Steam Big Picture Mode")
+	hwnd, _, _ := procFindWindow.Call(0, uintptr(unsafe.Pointer(title)))
+	return hwnd != 0
 }
 
 func openSteamURL(u string) error {
