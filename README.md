@@ -34,7 +34,7 @@ There's no login screen, because it's a single-user setup. Instead:
 
 See **[docs/setup.md](docs/setup.md)** for the full walkthrough. In short:
 
-1. Generate two keys and deploy the server: `cd server && npm install && npx wrangler deploy`
+1. Set up the Cloudflare server and keys: **[docs/cloudflare-setup.md](docs/cloudflare-setup.md)**
 2. Build the agent (`agent/build.sh`) and run `homeydeck-agent.exe install --server <url> --key <AGENT_KEY>` on the PC
 3. Open `apple/HomeyDeck.xcodeproj` in Xcode 16+, pick your team, run it, and fill in Settings
 

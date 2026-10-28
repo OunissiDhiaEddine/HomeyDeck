@@ -15,36 +15,19 @@ Keep them in your password manager. You'll paste APP_KEY into the app and AGENT_
 
 ## 2. Deploy the server
 
-**Easiest: let GitHub deploy it.** In the repo's **Settings → Secrets and variables → Actions**, add four secrets:
-
-| Secret | Value |
-|---|---|
-| `CLOUDFLARE_API_TOKEN` | Create one at dash.cloudflare.com/profile/api-tokens with the *Edit Cloudflare Workers* template |
-| `CLOUDFLARE_ACCOUNT_ID` | Shown on your Cloudflare dashboard's Workers & Pages page |
-| `APP_KEY` | The app key from step 1 |
-| `AGENT_KEY` | The agent key from step 1 |
-
-Then run the **Deploy server** workflow from the Actions tab. It also runs on every push to `main` that touches `server/`. The run's summary shows your server URL, and the job fails if the health check or the APP_KEY check fails.
-
-**Or deploy from your machine:**
+Follow **[cloudflare-setup.md](cloudflare-setup.md)**. It walks through the Cloudflare account, choosing your workers.dev subdomain, deploying, setting APP_KEY and AGENT_KEY as secrets, and checking the server works. In short:
 
 ```sh
 cd server
 npm install
 npx wrangler login                 # opens a browser to sign in to Cloudflare
+npx wrangler deploy                # prints https://homeydeck.<you>.workers.dev
 npx wrangler secret put APP_KEY    # paste the app key
 npx wrangler secret put AGENT_KEY  # paste the agent key
-npx wrangler deploy
+curl https://homeydeck.<you>.workers.dev/health   # {"ok":true}
 ```
 
-Wrangler prints your URL, something like `https://homeydeck.<you>.workers.dev`. To check it's working:
-
-```sh
-curl https://homeydeck.<you>.workers.dev/health                                   # {"ok":true}
-curl -H "Authorization: Bearer <APP_KEY>" https://homeydeck.<you>.workers.dev/api/status
-```
-
-**Free plan limits:** Workers and Durable Objects each allow 100,000 requests a day. The agent uses a few hundred a day. The app checks every 5 seconds while it's open and every 60 seconds in the background, so normal use stays far below the limit.
+Deploying from GitHub Actions is optional. See [Optional: deploy from GitHub instead](cloudflare-setup.md#optional-deploy-from-github-instead).
 
 ## 3. Install the agent on the PC
 
