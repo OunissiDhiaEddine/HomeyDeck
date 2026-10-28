@@ -11,6 +11,13 @@ HomeyDeck is an installable web app with accounts. Each person signs in with a u
 
 Everything runs on free plans with no card: Vercel Hobby for the server and app, and Upstash Redis (added from Vercel) for a little state.
 
+<p align="center">
+  <img src="docs/screenshots/online.png" width="200" alt="A PC online with Steam running">
+  <img src="docs/screenshots/offline.png" width="200" alt="A PC asleep, ready to wake">
+  <img src="docs/screenshots/pairing.png" width="200" alt="Pairing a new PC with a one-time code">
+  <img src="docs/screenshots/menu.png" width="200" alt="The menu with PCs and account settings">
+</p>
+
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FOunissiDhiaEddine%2FHomeyDeck%2Ftree%2Fmain%2Fweb&project-name=homeydeck&repository-name=homeydeck&env=ADMIN_USERNAME,ADMIN_PASSWORD&envDescription=The%20username%20and%20password%20for%20your%20HomeyDeck%20admin%20account&envLink=https%3A%2F%2Fgithub.com%2FOunissiDhiaEddine%2FHomeyDeck%2Fblob%2Fmain%2Fdocs%2Fself-hosting.md%232-choose-your-admin-login)
 
 **Host your own:** [docs/self-hosting.md](docs/self-hosting.md) walks through it with no terminal.
@@ -83,3 +90,7 @@ An always-on PC costs about 43,000 Upstash commands and 43,000 Vercel function c
 | Agent | `go run . run` (on macOS or Linux, power actions are only logged) | `go vet ./... && go test ./...` |
 
 Open the dev server at `http://localhost:3000`. Build the agent with `agent/build.sh <version>` (or `agent\build.ps1` on Windows). Pair a development agent with `install --code localhost:3000/<CODE>`. Plain HTTP is only allowed for localhost.
+
+## Support
+
+HomeyDeck is free. If it saves you a trip to the PC, you can [buy me a coffee](https://buymeacoffee.com/dhiaeddine).
