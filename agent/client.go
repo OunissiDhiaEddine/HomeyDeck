@@ -2,14 +2,20 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"math/rand/v2"
+	"net"
 	"net/http"
+	"net/http/httptrace"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -20,9 +26,15 @@ const (
 	steamPollEvery = 5 * time.Second
 	pingEvery      = 30 * time.Second
 	pingTimeout    = 10 * time.Second
+	dialTimeout    = 15 * time.Second
 	minBackoff     = 2 * time.Second
-	maxBackoff     = 60 * time.Second
+	maxBackoff     = 30 * time.Second
 )
+
+// errNetworkDown means the server's name doesn't resolve yet, which is what
+// the first minute after a restart looks like. It's retried quickly without
+// growing the backoff.
+var errNetworkDown = errors.New("network not ready")
 
 type Client struct {
 	cfg Config
@@ -38,6 +50,7 @@ func NewClient(cfg Config) *Client {
 // Run connects and reconnects until ctx is cancelled.
 func (c *Client) Run(ctx context.Context) {
 	backoff := minBackoff
+	quiet := false // already logged that the network is down
 	for ctx.Err() == nil {
 		started := time.Now()
 		err := c.session(ctx)
@@ -47,16 +60,26 @@ func (c *Client) Run(ctx context.Context) {
 		if time.Since(started) > time.Minute {
 			backoff = minBackoff // it was a healthy connection, retry quickly
 		}
-		log.Printf("disconnected: %v (retrying in %s)", err, backoff.Round(time.Second))
+		wait := backoff
+		if errors.Is(err, errNetworkDown) {
+			wait = minBackoff
+			if !quiet {
+				log.Printf("%v (checking every %s)", err, wait)
+			}
+			quiet = true
+		} else {
+			// Jitter keeps a flapping network from producing a perfectly regular storm.
+			wait += time.Duration(rand.Int64N(int64(backoff / 2)))
+			backoff = min(backoff*2, maxBackoff)
+			quiet = false
+			log.Printf("disconnected: %v (retrying in %s)", err, wait.Round(time.Second))
+		}
 
-		// Jitter keeps a flapping network from producing a perfectly regular storm.
-		wait := backoff + time.Duration(rand.Int64N(int64(backoff/2)))
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(wait):
 		}
-		backoff = min(backoff*2, maxBackoff)
 	}
 }
 
@@ -89,15 +112,8 @@ type resultMsg struct {
 }
 
 func (c *Client) session(ctx context.Context) error {
-	dialCtx, cancelDial := context.WithTimeout(ctx, 15*time.Second)
-	defer cancelDial()
-	conn, resp, err := websocket.Dial(dialCtx, c.wsURL(), &websocket.DialOptions{
-		HTTPHeader: http.Header{"Authorization": {"Bearer " + c.cfg.AgentKey}},
-	})
+	conn, err := c.dial(ctx)
 	if err != nil {
-		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
-			return errors.New("server rejected the agent key (check AGENT_KEY)")
-		}
 		return err
 	}
 	defer conn.CloseNow()
@@ -206,6 +222,59 @@ func (c *Client) session(ctx context.Context) error {
 
 	err = <-errc
 	return err
+}
+
+// dial opens the WebSocket on a fresh connection every time, so nothing from
+// a previous attempt (a half-open socket from before a restart or sleep, a
+// stale pooled connection) can be reused. On failure it says which step got
+// stuck, which tells a DNS, firewall or server problem apart.
+func (c *Client) dial(ctx context.Context) (*websocket.Conn, error) {
+	host := ""
+	if u, err := url.Parse(c.cfg.ServerURL); err == nil {
+		host = u.Hostname()
+	}
+	if host != "" && !isLocalhost(host) {
+		lctx, lcancel := context.WithTimeout(ctx, 5*time.Second)
+		_, err := net.DefaultResolver.LookupHost(lctx, host)
+		lcancel()
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", errNetworkDown, err)
+		}
+	}
+
+	var step atomic.Value
+	step.Store("starting")
+	trace := &httptrace.ClientTrace{
+		DNSStart:          func(httptrace.DNSStartInfo) { step.Store("resolving the server name") },
+		ConnectStart:      func(_, addr string) { step.Store("connecting to " + addr) },
+		TLSHandshakeStart: func() { step.Store("TLS handshake") },
+		WroteRequest:      func(httptrace.WroteRequestInfo) { step.Store("waiting for the server to answer") },
+	}
+
+	transport := &http.Transport{
+		Proxy:               http.ProxyFromEnvironment,
+		DialContext:         (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		TLSHandshakeTimeout: 10 * time.Second,
+		TLSClientConfig:     &tls.Config{NextProtos: []string{"http/1.1"}},
+	}
+	defer transport.CloseIdleConnections()
+
+	dctx, cancel := context.WithTimeout(httptrace.WithClientTrace(ctx, trace), dialTimeout)
+	defer cancel()
+	conn, resp, err := websocket.Dial(dctx, c.wsURL(), &websocket.DialOptions{
+		HTTPClient: &http.Client{Transport: transport},
+		HTTPHeader: http.Header{"Authorization": {"Bearer " + c.cfg.AgentKey}},
+	})
+	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
+			return nil, errors.New("server rejected the agent key (check AGENT_KEY)")
+		}
+		if resp != nil {
+			return nil, fmt.Errorf("server answered %s", resp.Status)
+		}
+		return nil, fmt.Errorf("%v (stuck at: %s)", err, step.Load())
+	}
+	return conn, nil
 }
 
 // runAction does the part of a command that must succeed before we answer.
