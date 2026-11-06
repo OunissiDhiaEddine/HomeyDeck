@@ -84,20 +84,33 @@ func uptime() time.Duration {
 // --- Steam -------------------------------------------------------------------
 
 func steamRunning() bool {
+	steam, _ := appsRunning()
+	return steam
+}
+
+// appsRunning reports whether Steam and Sunshine (the game-stream host) are
+// running, from one process snapshot.
+func appsRunning() (steam, sunshine bool) {
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
-		return false
+		return false, false
 	}
 	defer windows.CloseHandle(snap)
 
 	var entry windows.ProcessEntry32
 	entry.Size = uint32(unsafe.Sizeof(entry))
 	for err = windows.Process32First(snap, &entry); err == nil; err = windows.Process32Next(snap, &entry) {
-		if strings.EqualFold(windows.UTF16ToString(entry.ExeFile[:]), "steam.exe") {
-			return true
+		switch name := windows.UTF16ToString(entry.ExeFile[:]); {
+		case strings.EqualFold(name, "steam.exe"):
+			steam = true
+		case strings.EqualFold(name, "sunshine.exe"):
+			sunshine = true
+		}
+		if steam && sunshine {
+			break
 		}
 	}
-	return false
+	return steam, sunshine
 }
 
 func launchSteam() error {

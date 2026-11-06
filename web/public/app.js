@@ -277,6 +277,12 @@ $("restart").addEventListener("click", () =>
   confirmAction({ title: "Restart the PC?", text: "Anything unsaved on the PC will be lost.", verb: "Restart", danger: true, action: () => run("Restart", () => command("reboot")) }),
 );
 
+function runningCheck() {
+  const check = el("span", "check");
+  check.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" aria-label="Running"><path fill="currentColor" d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm4.3 6.3-5.6 5.6-2.9-2.9-1.4 1.4 4.3 4.3 7-7-1.4-1.4Z"/></svg>';
+  return check;
+}
+
 function launchSteam() {
   state.launchingSteam = true;
   run("Launch Steam", () => command("launch_steam"));
@@ -333,9 +339,7 @@ function render() {
   if (state.launchingSteam && !running && online) {
     slot.replaceChildren(el("div", "spinner"));
   } else if (running) {
-    const check = el("span", "check");
-    check.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" aria-label="Running"><path fill="currentColor" d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm4.3 6.3-5.6 5.6-2.9-2.9-1.4 1.4 4.3 4.3 7-7-1.4-1.4Z"/></svg>';
-    slot.replaceChildren(check);
+    slot.replaceChildren(runningCheck());
   } else if (online) {
     const btn = el("button", "pill", "Launch");
     btn.disabled = state.busy;
@@ -344,6 +348,12 @@ function render() {
   } else {
     slot.replaceChildren();
   }
+
+  // Sunshine is status only. Hidden until the agent reports it (v0.4+).
+  const sun = s?.sunshineRunning;
+  $("sunshine-card").hidden = !state.pc || sun == null;
+  $("sunshine-subtitle").textContent = !online ? "Available when the PC is on" : sun ? "Running, ready to stream" : "Not running";
+  $("sunshine-action").replaceChildren(...(online && sun ? [runningCheck()] : []));
 
   $("updated").textContent = state.updatedAt ? `Updated ${new Date(state.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}` : "";
 }

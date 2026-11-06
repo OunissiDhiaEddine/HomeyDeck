@@ -11,6 +11,7 @@
   --sleep: #8c8cff;
   --off: #8c8c8c;
   --steam: #66a6ff;
+  --sunshine: #ffc247;
   --danger: #ff6b6b;
   --tint: var(--off);
   color-scheme: dark;
@@ -144,6 +145,7 @@ h1 { margin: 0; font-size: 24px; font-weight: 700; }
   color: var(--steam);
   background: color-mix(in srgb, var(--steam) 15%, transparent);
 }
+.sunshine .steam-icon { color: var(--sunshine); background: color-mix(in srgb, var(--sunshine) 15%, transparent); }
 .steam-text { flex: 1; min-width: 0; }
 .steam-action { flex: none; display: flex; align-items: center; }
 .check { color: var(--online); }

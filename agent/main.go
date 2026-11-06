@@ -1,7 +1,7 @@
 // HomeyDeck agent: a tiny background program for the Windows PC.
 //
-// It polls the HomeyDeck server over HTTPS, reports whether Steam is
-// running, and carries out launch_steam / sleep / reboot commands.
+// It polls the HomeyDeck server over HTTPS, reports whether Steam and
+// Sunshine are running, and carries out launch_steam / sleep / reboot commands.
 //
 // Installing needs no terminal: in HomeyDeck choose Add PC and copy the
 // pairing code, then double-click homeydeck-agent.exe (or type the code into
@@ -390,7 +390,9 @@ func printStatus() error {
 		return err
 	}
 	fmt.Println("server:         ", cfg.ServerURL)
-	fmt.Println("steam running:  ", steamRunning())
+	steam, sunshine := appsRunning()
+	fmt.Println("steam running:  ", steam)
+	fmt.Println("sunshine running:", sunshine)
 	fmt.Println("start at sign-in:", autostartEnabled())
 	fmt.Println("log file:       ", logPath())
 	return nil
