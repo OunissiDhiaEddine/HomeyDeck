@@ -354,3 +354,5 @@ body[data-phase="none"] .steam, body[data-phase="none"] .actions { display: none
 .menu-links { display: flex; justify-content: center; gap: 14px; padding-top: 6px; }
 .menu-links a { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; color: var(--faint); background: rgba(255, 255, 255, 0.05); transition: color 0.2s ease; }
 .menu-links a:hover, .menu-links a:focus-visible { color: var(--text); }
+.ip-check { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 2px; }
+.ip-check .hint { word-break: break-all; color: var(--muted); }

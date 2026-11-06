@@ -203,6 +203,10 @@
       <input id="pc-mac" placeholder="AA:BB:CC:DD:EE:FF" autocomplete="off" autocapitalize="characters" spellcheck="false">
       <label for="pc-host">Router's DDNS name or public IP</label>
       <input id="pc-host" placeholder="myhome.ddns.net" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url">
+      <div class="ip-check" id="ip-check" hidden>
+        <button class="pill quiet" type="button" id="ip-btn">Check public IP</button>
+        <span class="hint mono" id="ip-result" aria-live="polite"></span>
+      </div>
       <label for="pc-port">UDP port</label>
       <input id="pc-port" placeholder="9" inputmode="numeric" autocomplete="off">
       <p class="hint">Saved encrypted. Leave all three blank to add them later.</p>

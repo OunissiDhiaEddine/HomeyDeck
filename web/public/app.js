@@ -572,6 +572,8 @@ async function openPcForm(pc) {
   $("pc-save").textContent = pc ? "Save" : "Next";
   $("pc-remove").hidden = !pc;
   $("pc-error").textContent = "";
+  $("ip-result").textContent = "";
+  $("ip-check").hidden = true;
   for (const id of ["pc-name", "pc-mac", "pc-host", "pc-port"]) $(id).value = "";
   if (pc) {
     $("pc-name").value = pc.name;
@@ -580,12 +582,28 @@ async function openPcForm(pc) {
       $("pc-mac").value = d.mac;
       $("pc-host").value = d.host;
       $("pc-port").value = d.mac ? String(d.port) : "";
+      $("ip-check").hidden = !d.host;
     } catch (err) {
       $("pc-error").textContent = err.message;
     }
   }
   openSheet("pc-sheet");
 }
+
+// Resolves the saved DDNS name on the server; works with the PC off.
+$("ip-btn").addEventListener("click", async () => {
+  const out = $("ip-result");
+  $("ip-btn").disabled = true;
+  out.textContent = "Looking up…";
+  try {
+    const d = await api("/api/pcs", { action: "public_ip", pc: editing.id });
+    out.textContent = d.ips.join(", ");
+  } catch (err) {
+    out.textContent = err.message;
+  } finally {
+    $("ip-btn").disabled = false;
+  }
+});
 
 $("pc-form").addEventListener("submit", async (e) => {
   e.preventDefault();
