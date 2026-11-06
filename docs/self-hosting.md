@@ -45,8 +45,9 @@ HomeyDeck keeps a little state in Upstash Redis. The free plan is plenty and nee
 
 1. In your Vercel project, open the **Storage** tab.
 2. Click **Create Database** (or **Browse Marketplace**), choose **Upstash for Redis**, and click **Continue**.
-3. Pick the **Free** plan and a region close to you, name it `homeydeck`, and click **Create**.
+3. Pick the **Free** plan and a region close to you, name it `homeydeck`, and click **Create**. Leave read regions off: HomeyDeck writes on almost every request, so a replica adds commands without making it faster.
 4. When it asks which project to connect, choose your HomeyDeck project and click **Connect**. Vercel adds the database's settings to the project for you.
+5. Put the app's functions next to the database: in **Settings → Functions → Function Region**, choose the Vercel region in the same city as the database (for example Frankfurt `fra1` for Upstash `eu-central-1`) and save. Each request makes one or two database calls, so this saves a cross-ocean trip on each.
 
 ## 4. Add the encryption key
 

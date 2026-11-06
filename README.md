@@ -3,7 +3,7 @@
 Wake, check and control your Windows gaming PC from your phone or Mac, from anywhere. Made for Steam Remote Play.
 
 - **Wake** the PC with Wake-on-LAN through your router's DDNS address
-- **See** whether it's on, how long it's been up, and whether Steam is running
+- **See** whether it's on, how long it's been up, and whether Steam and Sunshine are running
 - **Launch Steam** so it's ready for Remote Play
 - **Sleep** or **restart** it remotely
 
@@ -42,7 +42,7 @@ To **remove** the agent, use Windows **Settings → Apps → HomeyDeck agent →
 ```
 
 - **`web/`**: the Vercel project. `public/` is the installable web app, `api/` the server functions, and `lib/` their shared code. There is no build step and there are no dependencies.
-- **`agent/`**: a small Go program for Windows. It starts hidden at sign-in, asks the server for work every 30 seconds (every 2 seconds while someone is using the app), reports Steam status, and carries out launch / sleep / restart. It never accepts inbound connections. One released exe works with any HomeyDeck server, because the pairing code carries the server's address.
+- **`agent/`**: a small Go program for Windows. It starts hidden at sign-in, asks the server for work every 30 seconds (every 2 seconds while someone is using the app), reports whether Steam and Sunshine are running, and carries out launch / sleep / restart. It never accepts inbound connections. One released exe works with any HomeyDeck server, because the pairing code carries the server's address.
 
 ### Configuration
 

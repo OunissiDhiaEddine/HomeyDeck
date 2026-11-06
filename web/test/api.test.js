@@ -194,6 +194,11 @@ test("an agent poll costs one database command, a status check two", async () =>
   assert.equal(db.commands, 2);
   assert.equal(s.data.phase, "online");
   assert.equal(s.data.steamRunning, true);
+  assert.equal(s.data.sunshineRunning, null, "older agents don't report Sunshine");
+
+  await agent("/api/agent/poll", token, { hostname: "PC", steamRunning: true, sunshineRunning: true, uptimeSeconds: 99, agentVersion: "2" });
+  s = await admin.send(`/api/status?pc=${pc}`);
+  assert.equal(s.data.sunshineRunning, true);
 
   // Watching asks the agent to speed up, once.
   db.resetCount();

@@ -103,6 +103,7 @@ func (c *Client) Run(ctx context.Context) error {
 type statusMsg struct {
 	Hostname      string `json:"hostname"`
 	SteamRunning  bool   `json:"steamRunning"`
+	Sunshine      bool   `json:"sunshineRunning"`
 	UptimeSeconds int64  `json:"uptimeSeconds"`
 	AgentVersion  string `json:"agentVersion"`
 	FastUntil     int64  `json:"fastUntil,omitempty"`
@@ -134,7 +135,7 @@ func (c *Client) session(ctx context.Context) error {
 	}
 	log.Printf("polling %s", c.cfg.ServerURL)
 	hostname, _ := os.Hostname()
-	steam := steamRunning()
+	steam, sunshine := appsRunning()
 	var fastUntil int64
 	done := map[string]bool{} // command IDs already carried out
 
@@ -148,9 +149,9 @@ func (c *Client) session(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-steamTick.C:
-			// Report a Steam change right away instead of at the next poll.
-			if now := steamRunning(); now != steam {
-				steam = now
+			// Report a Steam or Sunshine change right away instead of at the next poll.
+			if s, sun := appsRunning(); s != steam || sun != sunshine {
+				steam, sunshine = s, sun
 				if !timer.Stop() {
 					select {
 					case <-timer.C:
@@ -167,6 +168,7 @@ func (c *Client) session(ctx context.Context) error {
 		err := c.post(ctx, "/api/agent/poll", statusMsg{
 			Hostname:      hostname,
 			SteamRunning:  steam,
+			Sunshine:      sunshine,
 			UptimeSeconds: int64(uptime().Seconds()),
 			AgentVersion:  version,
 			FastUntil:     fastUntil,
@@ -196,7 +198,7 @@ func (c *Client) session(ctx context.Context) error {
 			if res.OK {
 				c.afterReply(cmd.Action)
 			}
-			steam = steamRunning()
+			steam, sunshine = appsRunning()
 		}
 		timer.Reset(pollInterval(reply.PollSeconds))
 	}

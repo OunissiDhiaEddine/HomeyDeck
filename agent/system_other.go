@@ -29,6 +29,7 @@ func hasConsole() bool                 { return true }
 func singleInstance() (func(), error)  { return func() {}, nil }
 func uptime() time.Duration            { return time.Since(started) }
 func steamRunning() bool               { return os.Getenv("HOMEYDECK_FAKE_STEAM") == "1" }
+func appsRunning() (bool, bool)        { return steamRunning(), os.Getenv("HOMEYDECK_FAKE_SUNSHINE") == "1" }
 func launchSteam() error               { log.Printf("[dev] would launch Steam"); return nil }
 func canSleep() error                  { return nil }
 func sleepNow() error                  { log.Printf("[dev] would sleep"); return nil }

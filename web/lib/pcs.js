@@ -204,6 +204,8 @@ export function statusView(s, woke, power) {
     phase,
     online,
     steamRunning: online ? Boolean(s.steamRunning) : false,
+    // null when the agent is too old to report Sunshine.
+    sunshineRunning: typeof s?.sunshineRunning === "boolean" ? online && s.sunshineRunning : null,
     hostname: s?.hostname || null,
     uptimeSeconds: online ? s.uptimeSeconds : null,
     agentVersion: s?.agentVersion || null,
@@ -315,6 +317,7 @@ export async function agentPoll(request, env) {
   const report = {
     hostname: str(data.hostname, 64),
     steamRunning: Boolean(data.steamRunning),
+    sunshineRunning: typeof data.sunshineRunning === "boolean" ? data.sunshineRunning : undefined,
     uptimeSeconds: Math.max(0, Math.floor(Number(data.uptimeSeconds) || 0)),
     agentVersion: str(data.agentVersion, 32),
     lastSeen: now,
