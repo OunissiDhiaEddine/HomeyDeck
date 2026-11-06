@@ -366,6 +366,18 @@ test("wake details are checked and can be edited", async () => {
   assert.deepEqual(details.data, { ok: true, name: "Den", mac: "A1:B2:C3:D4:E5:F6", host: "home.example.net", port: 4009 });
 });
 
+test("public IP: resolves the saved address on request, only for the owner", async () => {
+  await db.flush();
+  const admin = await adminBrowser();
+  const { pc } = await pairPc(admin);
+  const ip = await admin.send("/api/pcs", { action: "public_ip", pc });
+  assert.deepEqual(ip.data, { ok: true, host: "127.0.0.1", ips: ["127.0.0.1"] });
+  const bob = await newUser(admin, "bob");
+  assert.equal((await bob.send("/api/pcs", { action: "public_ip", pc })).status, 404);
+  const bare = await pairPc(admin, { mac: "", host: "" });
+  assert.equal((await admin.send("/api/pcs", { action: "public_ip", pc: bare.pc })).status, 409);
+});
+
 test("the admin resets, disables and deletes users", async () => {
   await db.flush();
   const admin = await adminBrowser();

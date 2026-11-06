@@ -23,6 +23,8 @@
  */
 
 import crypto from "node:crypto";
+import net from "node:net";
+import { Resolver, lookup } from "node:dns/promises";
 import { pipeline, command, hash } from "./redis.js";
 import { HttpError, json, body, parse, str } from "./http.js";
 import { randomId, sha256, humanCode, normalizeCode, seal, unseal, hasDataKey } from "./secrets.js";
@@ -131,6 +133,15 @@ export async function pcsPost(request, env) {
     return json({ ok: true, name: meta.name ?? "", mac: unseal(meta.mac, env), host: unseal(meta.host, env), port: Number(meta.port) || 9 });
   }
 
+  if (data.action === "public_ip") {
+    // Only when the user taps it: resolves the saved DDNS name, nothing else.
+    const meta = hash(await command(["HGETALL", k.meta], env));
+    if (!meta) throw new HttpError(404, "that PC was removed");
+    const host = unseal(meta.host, env);
+    if (!host) throw new HttpError(409, "add this PC's DDNS name in its settings first");
+    return json({ ok: true, host, ips: await resolvePublicIp(host) });
+  }
+
   if (data.action === "remove") {
     // The agent's next poll fails, and it removes itself from the PC.
     await pipeline(deletePcKeys(uid, pc), env);
@@ -138,6 +149,25 @@ export async function pcsPost(request, env) {
   }
 
   throw new HttpError(400, "unknown action");
+}
+
+/**
+ * Asks public resolvers directly so the answer is as fresh as the DDNS
+ * record, not whatever an OS cache kept. IPv4 first, then IPv6.
+ */
+export async function resolvePublicIp(host, servers = ["1.1.1.1", "8.8.8.8"]) {
+  if (net.isIP(host)) return [host];
+  const resolver = new Resolver({ timeout: 2500, tries: 2 });
+  resolver.setServers(servers);
+  const [v4, v6] = await Promise.allSettled([resolver.resolve4(host), resolver.resolve6(host)]);
+  const ips = [...(v4.value ?? []), ...(v6.value ?? [])];
+  if (ips.length) return ips;
+  // Fall back to the platform's resolver, in case direct DNS is blocked.
+  const found = await lookup(host, { all: true }).catch(() => []);
+  if (found.length) return found.sort((a, b) => a.family - b.family).map((a) => a.address);
+  const err = v4.reason ?? v6.reason;
+  if (err?.code === "ENOTFOUND" || err?.code === "ENODATA") throw new HttpError(502, `${host} doesn't resolve to an address`);
+  throw new HttpError(502, `couldn't look up ${host}${err?.code ? ` (${err.code})` : ""}`);
 }
 
 // --- status (GET /api/status?pc=…&watch=1) -----------------------------------
