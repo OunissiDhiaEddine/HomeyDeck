@@ -30,7 +30,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: agent
-          path: agent/dist/homeydeck-agent.exe
+          path: |
+            agent/dist/homeydeck-agent.exe
+            agent/dist/homeydeck-agent-linux
 
   publish:
     needs: [agent]

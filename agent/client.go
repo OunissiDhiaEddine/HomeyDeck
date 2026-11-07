@@ -102,6 +102,7 @@ func (c *Client) Run(ctx context.Context) error {
 
 type statusMsg struct {
 	Hostname      string `json:"hostname"`
+	OS            string `json:"os,omitempty"`
 	SteamRunning  bool   `json:"steamRunning"`
 	Sunshine      bool   `json:"sunshineRunning"`
 	UptimeSeconds int64  `json:"uptimeSeconds"`
@@ -167,6 +168,7 @@ func (c *Client) session(ctx context.Context) error {
 		var reply pollReply
 		err := c.post(ctx, "/api/agent/poll", statusMsg{
 			Hostname:      hostname,
+			OS:            osName(),
 			SteamRunning:  steam,
 			Sunshine:      sunshine,
 			UptimeSeconds: int64(uptime().Seconds()),
@@ -326,7 +328,7 @@ func runAction(action string) error {
 		}
 		return launchSteam()
 	case "reboot":
-		return reboot() // Windows waits a few seconds before restarting
+		return reboot() // starts a few seconds later, so this reply gets out first
 	case "sleep":
 		return canSleep()
 	default:

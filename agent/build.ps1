@@ -1,4 +1,4 @@
-# Builds the agent on Windows. Output: agent\dist\homeydeck-agent.exe
+# Builds the agent on Windows. Output: agent\dist\homeydeck-agent.exe (the Windows agent)
 param([string]$Version = "dev")
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot

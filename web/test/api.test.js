@@ -325,6 +325,52 @@ test("accounts can't see, wake, command or change each other's PCs", async () =>
   assert.equal((await alice.send("/api/admin", { action: "invite_create" })).status, 403);
 });
 
+test("dual boot: a second system joins the same PC and shares its wake details", async () => {
+  await db.flush();
+  const admin = await adminBrowser();
+  const alice = await newUser(admin, "alice");
+  const mallory = await newUser(admin, "mallory");
+  const { token, pc } = await pairPc(alice);
+
+  assert.equal((await mallory.send("/api/pcs", { action: "link", pc })).status, 404, "only the owner can link");
+  const link = await alice.send("/api/pcs", { action: "link", pc });
+  assert.equal(link.status, 200, JSON.stringify(link.data));
+  const paired = await agent("/api/agent/pair", "", { code: link.data.code, hostname: "bazzite" });
+  assert.equal(paired.status, 200, JSON.stringify(paired.data));
+  assert.equal(paired.data.name, "Gaming PC");
+  const linked = paired.data.token;
+  assert.notEqual(linked, token);
+  assert.equal((await agent("/api/agent/pair", "", { code: link.data.code })).status, 404, "single use");
+
+  // Still one PC, with its wake details; whichever system is up reports into it.
+  const me = await alice.send("/api/session");
+  assert.equal(me.data.pcs.length, 1);
+  assert.equal(me.data.pcs[0].wake, true);
+  db.resetCount();
+  assert.equal((await agent("/api/agent/poll", linked, { hostname: "bazzite", os: "Bazzite", steamRunning: true })).status, 200);
+  assert.equal(db.commands, 1, "a linked agent's poll is still one command");
+  let s = await alice.send(`/api/status?pc=${pc}`);
+  assert.equal(s.data.phase, "online");
+  assert.equal(s.data.os, "Bazzite");
+  assert.equal(s.data.hostname, "bazzite");
+  await agent("/api/agent/poll", token, { hostname: "DESKTOP-1", os: "Windows" });
+  s = await alice.send(`/api/status?pc=${pc}`);
+  assert.equal(s.data.os, "Windows");
+
+  // A forged or borrowed signature gets nowhere.
+  const [uid, , sig] = linked.split(".");
+  const mallorysPc = (await pairPc(mallory)).pc;
+  assert.equal((await agent("/api/agent/poll", `${uid}.${pc}.${"A".repeat(43)}`, {})).status, 401);
+  assert.equal((await agent("/api/agent/poll", `${uid}.${mallorysPc}.${sig}`, {})).status, 401);
+
+  // Removing the PC locks out both systems' agents.
+  await alice.send("/api/pcs", { action: "remove", pc });
+  const gone = await agent("/api/agent/poll", linked, {});
+  assert.equal(gone.status, 401);
+  assert.equal(gone.data.code, "pc_removed");
+  assert.equal((await alice.send("/api/pcs", { action: "link", pc })).status, 404);
+});
+
 test("removing a PC locks its agent out", async () => {
   await db.flush();
   const admin = await adminBrowser();

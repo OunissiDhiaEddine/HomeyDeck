@@ -108,3 +108,26 @@ export function unseal(sealed, env = process.env) {
     return "";
   }
 }
+
+// --- dual-boot agents --------------------------------------------------------
+
+// A second system on a PC that's already paired (dual boot) gets a token that
+// names the PC and is signed with a key derived from DATA_KEY, so polls stay
+// one database command and nothing more is stored. Removing the PC still
+// stops it, because its keys are gone.
+
+function linkKeys(env) {
+  return dataKeys(env).map(({ key }) => crypto.createHmac("sha256", key).update("homeydeck agent link").digest());
+}
+
+const linkSig = (key, uid, pc) => crypto.createHmac("sha256", key).update(`${uid}.${pc}`).digest("base64url");
+
+/** The signature part of a linked agent's token "<uid>.<pc>.<sig>". */
+export function signAgentLink(uid, pc, env = process.env) {
+  if (!hasDataKey(env)) throw new Error("DATA_KEY is not set");
+  return linkSig(linkKeys(env)[0], uid, pc);
+}
+
+export function checkAgentLink(uid, pc, sig, env = process.env) {
+  return linkKeys(env).some((key) => safeEqual(linkSig(key, uid, pc), sig));
+}

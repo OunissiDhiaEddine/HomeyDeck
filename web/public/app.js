@@ -23,6 +23,7 @@ const state = {
   pcs: [],
   maxPcs: null,
   agentUrl: "",
+  agentLinuxUrl: "",
   pc: null, // the selected PC's id
   status: null,
   updatedAt: null,
@@ -78,6 +79,7 @@ async function loadSession() {
     state.pcs = data.pcs;
     state.maxPcs = data.maxPcs;
     state.agentUrl = data.agentUrl;
+    state.agentLinuxUrl = data.agentLinuxUrl;
     let saved = null;
     try {
       saved = localStorage.getItem(PC_STORAGE);
@@ -361,7 +363,7 @@ function render() {
 function detail(p, s, pc) {
   if (p === "none") return "Add a PC to get started";
   if (!s) return "";
-  if (p === "online" && s.uptimeSeconds != null) return `Up for ${formatDuration(s.uptimeSeconds)}`;
+  if (p === "online" && s.uptimeSeconds != null) return `Up for ${formatDuration(s.uptimeSeconds)}${s.os ? ` on ${s.os}` : ""}`;
   if (p === "offline" && !pc?.wake) return "Add its MAC address and DDNS name in the menu to wake it";
   if (p === "offline" && s.lastSeen) return `Last seen ${relative(new Date(s.lastSeen))}`;
   if (p === "offline") return "The agent hasn't checked in yet";
@@ -571,6 +573,7 @@ async function openPcForm(pc) {
   $("pc-title").textContent = pc ? "PC settings" : "Add PC";
   $("pc-save").textContent = pc ? "Save" : "Next";
   $("pc-remove").hidden = !pc;
+  $("pc-link").hidden = !pc;
   $("pc-error").textContent = "";
   $("ip-result").textContent = "";
   $("ip-check").hidden = true;
@@ -627,6 +630,19 @@ $("pc-form").addEventListener("submit", async (e) => {
   }
 });
 
+// Dual boot: the agent on the PC's other system joins this same PC.
+$("pc-link").addEventListener("click", async () => {
+  $("pc-error").textContent = "";
+  try {
+    const pairing = await api("/api/pcs", { action: "link", pc: editing.id });
+    const name = editing.name;
+    closeSheet("pc-sheet");
+    openPairing(pairing, name);
+  } catch (err) {
+    $("pc-error").textContent = err.message;
+  }
+});
+
 $("pc-remove").addEventListener("click", () => {
   const pc = editing;
   closeSheet("pc-sheet");
@@ -651,9 +667,14 @@ $("pc-remove").addEventListener("click", () => {
 
 let pairTimer = null;
 
-function openPairing({ code, text, expiresIn }) {
+function openPairing({ code, text, expiresIn }, linkingTo = null) {
   const expires = Date.now() + expiresIn * 1000;
   const host = text.slice(text.indexOf(":") + 1, text.lastIndexOf("/"));
+  $("pair-title").textContent = linkingTo ? "Add the other system" : "Pair your PC";
+  $("pair-intro").hidden = !linkingTo;
+  $("pair-intro").textContent = linkingTo ? `Pair the agent on ${linkingTo}'s other system. Both share this PC's card and wake details, and the app shows which one is running.` : "";
+  const linux = `f=$(mktemp) && curl -fsSLo "$f" "${state.agentLinuxUrl}" && chmod +x "$f" && "$f" install --code ${host}/${code}; rm -f "$f"`;
+  $("copy-linux").onclick = () => copy(linux, $("copy-linux"));
   $("pair-code").replaceChildren(el("strong", "", code), el("span", "hint center", `To type it on the PC instead, enter ${host}/${code}`));
   $("agent-link").href = state.agentUrl;
   $("copy-pair").onclick = () => copy(text, $("copy-pair"));
@@ -672,7 +693,7 @@ function openPairing({ code, text, expiresIn }) {
         await loadSession();
         const added = state.pcs.find((p) => !before.has(p.id));
         if (added) selectPc(added.id);
-        $("pair-status").textContent = "Paired! Your PC is ready.";
+        $("pair-status").textContent = linkingTo ? "Paired! Both systems now report into this PC." : "Paired! Your PC is ready.";
         setTimeout(() => closeSheet("pair-sheet"), 1500);
         return;
       }

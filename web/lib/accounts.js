@@ -217,7 +217,7 @@ export async function sessionGet(request, env) {
 
   const raw = cookie(request, SESSION_COOKIE);
   return json(
-    { ok: true, user: publicUser(uid, user), pcs, maxPcs: Number.isFinite(maxPcs(env)) ? maxPcs(env) : null, agentUrl: agentUrl(env) },
+    { ok: true, user: publicUser(uid, user), pcs, maxPcs: Number.isFinite(maxPcs(env)) ? maxPcs(env) : null, agentUrl: agentUrl(env), agentLinuxUrl: agentLinuxUrl(env) },
     200,
     { "Set-Cookie": setCookie(SESSION_COOKIE, raw, SESSION_TTL_S) },
   );
@@ -225,6 +225,9 @@ export async function sessionGet(request, env) {
 
 export const agentUrl = (env) =>
   env.AGENT_DOWNLOAD_URL || "https://github.com/OunissiDhiaEddine/HomeyDeck/releases/latest/download/homeydeck-agent.exe";
+
+export const agentLinuxUrl = (env) =>
+  env.AGENT_LINUX_DOWNLOAD_URL || "https://github.com/OunissiDhiaEddine/HomeyDeck/releases/latest/download/homeydeck-agent-linux";
 
 // --- account page (POST /api/account) ----------------------------------------
 

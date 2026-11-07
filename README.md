@@ -1,6 +1,6 @@
 # HomeyDeck
 
-Wake, check and control your Windows gaming PC from your phone or Mac, from anywhere. Made for Steam Remote Play.
+Wake, check and control your gaming PC (Windows, or Linux like Bazzite, or both on a dual-boot PC) from your phone or Mac, from anywhere. Made for Steam Remote Play.
 
 - **Wake** the PC with Wake-on-LAN through your router's DDNS address
 - **See** whether it's on, how long it's been up, and whether Steam and Sunshine are running
@@ -28,21 +28,26 @@ Everything runs on free plans with no card: Vercel Hobby for the server and app,
 2. Install it as an app: on iPhone, Safari → **Share → Add to Home Screen**; on Mac, Safari → **File → Add to Dock**.
 3. Tap **Add PC**, enter the PC's MAC address, your router's DDNS name and the UDP port it forwards (or leave them blank for now), and tap **Next**.
 4. On the Windows PC, download [`homeydeck-agent.exe`](https://github.com/OunissiDhiaEddine/HomeyDeck/releases/latest/download/homeydeck-agent.exe), copy the pairing code, then double-click the exe and click **Yes**. Without a copied code it asks you to type it.
+5. On **Linux** (made for Bazzite) instead, tap **Copy Linux command** on that screen, on the PC, and paste it into a terminal (Konsole in Desktop Mode). It downloads [`homeydeck-agent-linux`](https://github.com/OunissiDhiaEddine/HomeyDeck/releases/latest/download/homeydeck-agent-linux), pairs it, and starts it at every sign-in, Game Mode included.
+
+**Dual boot:** pair one system as above, then open the PC's **Settings** in HomeyDeck and choose **Dual boot? Add its other system** to pair the other one. Both agents report into the same PC, so it keeps one card, one MAC address and one wake setup, and the app shows which system is up ("Up for 2h on Bazzite").
 
 [docs/self-hosting.md](docs/self-hosting.md#7-prepare-the-pc-and-router-for-wake-on-lan) explains the Windows and router settings Wake-on-LAN needs.
 
 To **remove** the agent, use Windows **Settings → Apps → HomeyDeck agent → Uninstall**, double-click the exe again, or remove the PC in HomeyDeck. Each way stops it, removes it from startup and deletes `%LOCALAPPDATA%\HomeyDeck`. To **update** it, double-click a newer exe and click **Yes**.
 
+On Linux the agent lives only in your home folder (no rpm-ostree layering, no root): `~/.local/share/homeydeck/`, a systemd user service and an app menu entry called **HomeyDeck agent** with the HomeyDeck icon. Open that entry, or run `~/.local/share/homeydeck/homeydeck-agent uninstall`, to remove it all; removing the PC in HomeyDeck does the same. To update it, paste the Linux command again. `~/.local/share/homeydeck/homeydeck-agent status` also checks that Wake-on-LAN is on for the network card, which Linux often leaves off, and prints the one `nmcli` command that turns it on.
+
 ## How it works
 
 ```
- HomeyDeck app (PWA) ──HTTPS──▶ Vercel ◀──HTTPS polling── Windows agent
+ HomeyDeck app (PWA) ──HTTPS──▶ Vercel ◀──HTTPS polling── Windows or Linux agent
                                   │                         (hidden, on the PC)
                                   └──UDP magic packet──▶ router DDNS:port ──▶ PC network card
 ```
 
 - **`web/`**: the Vercel project. `public/` is the installable web app, `api/` the server functions, and `lib/` their shared code. There is no build step and there are no dependencies.
-- **`agent/`**: a small Go program for Windows. It starts hidden at sign-in, asks the server for work every 30 seconds (every 2 seconds while someone is using the app), reports whether Steam and Sunshine are running, and carries out launch / sleep / restart. It never accepts inbound connections. One released exe works with any HomeyDeck server, because the pairing code carries the server's address.
+- **`agent/`**: a small Go program for Windows and Linux (one static binary each, no dependencies). It starts hidden at sign-in (on Linux, as a systemd user service), asks the server for work every 30 seconds (every 2 seconds while someone is using the app), reports whether Steam and Sunshine are running, and carries out launch / sleep / restart. It never accepts inbound connections. One released exe works with any HomeyDeck server, because the pairing code carries the server's address.
 
 ### Configuration
 
@@ -56,6 +61,7 @@ All configuration is in Vercel environment variables. `/api/health` reports whic
 | `ADMIN_PASSWORD` | first sign-in only | Creates the admin account the first time it signs in. Delete it afterwards. |
 | `MAX_PCS_PER_USER` | no | PCs per account, 3 by default. `0` means no limit. |
 | `AGENT_DOWNLOAD_URL` | no | Where the app links for `homeydeck-agent.exe`. Defaults to this repo's latest release. |
+| `AGENT_LINUX_DOWNLOAD_URL` | no | Where the Linux command downloads `homeydeck-agent-linux` from. Defaults to this repo's latest release. |
 
 ## Security
 
@@ -65,7 +71,8 @@ All configuration is in Vercel environment variables. `/api/health` reports whic
 - Every PC's keys are scoped to its owner's account and to a hash of its agent's secret, so one account can't see, wake or command another's PCs. The tests check this.
 - MAC addresses and DDNS names are encrypted with AES-256-GCM using `DATA_KEY`, so the database alone reveals no home addresses.
 - The agent only accepts three commands (`launch_steam`, `sleep`, `reboot`). There's no remote shell. A command it doesn't pick up within 90 seconds is dropped, so a restart can never run hours later.
-- On the PC, the agent's token is encrypted with Windows DPAPI, readable only by that Windows user.
+- On Windows, the agent's token is encrypted with DPAPI, readable only by that Windows user. On Linux it's in a file only your user can read (mode 0600), like an SSH key.
+- A dual-boot PC's second agent gets a token that names the PC and is signed with a key derived from `DATA_KEY`, so its check-ins are still one Upstash command. Removing the PC locks out both agents. Rotating `DATA_KEY` keeps it working while the old key is in `DATA_KEY_PREVIOUS`; after that, pair the second system again.
 - The PC never accepts inbound connections for HomeyDeck. The only open port is the Wake-on-LAN UDP port you forward.
 - The app sends a strict Content-Security-Policy, HSTS, and no-referrer, nosniff and no-framing headers.
 - There are no rate limits or login lockouts. Use a strong password.
