@@ -212,6 +212,7 @@
       <p class="hint">Saved encrypted. Leave all three blank to add them later.</p>
       <p class="form-error" id="pc-error" role="alert"></p>
       <button class="sheet-btn primary" type="submit" id="pc-save">Next</button>
+      <button class="sheet-btn" type="button" id="pc-link" hidden>Dual boot? Add its other system</button>
       <button class="sheet-btn danger" type="button" id="pc-remove" hidden>Remove this PC</button>
       <button class="sheet-btn" type="button" data-close>Cancel</button>
     </form>
@@ -221,13 +222,18 @@
   <div class="sheet-backdrop" id="pair-sheet" hidden>
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pair-title">
       <h2 id="pair-title">Pair your PC</h2>
+      <p class="hint" id="pair-intro" hidden></p>
+      <h3>On Windows</h3>
       <ol class="steps">
-        <li>On the Windows PC, <a id="agent-link" href="#" target="_blank" rel="noopener">download homeydeck-agent.exe</a>.</li>
+        <li>On the PC, <a id="agent-link" href="#" target="_blank" rel="noopener">download homeydeck-agent.exe</a>.</li>
         <li>Copy the pairing code below on the PC (or keep this screen open to type it).</li>
         <li>Double-click <code>homeydeck-agent.exe</code> and click Yes.</li>
       </ol>
       <div class="pair-code" id="pair-code"></div>
       <button class="sheet-btn primary" type="button" id="copy-pair">Copy pairing code</button>
+      <h3>On Linux (Bazzite)</h3>
+      <p class="hint">In Desktop Mode, copy this on the PC and paste it into a terminal (Konsole). It downloads the agent, pairs it and starts it at every sign-in.</p>
+      <button class="sheet-btn" type="button" id="copy-linux">Copy Linux command</button>
       <p class="hint center" id="pair-status" aria-live="polite"></p>
       <button class="sheet-btn" type="button" data-close>Close</button>
     </div>

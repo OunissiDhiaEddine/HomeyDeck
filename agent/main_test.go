@@ -1,8 +1,15 @@
 package main
 
 import (
+	"os"
 	"testing"
 )
+
+// Tests never launch Steam, suspend or restart the machine they run on.
+func TestMain(m *testing.M) {
+	os.Setenv("HOMEYDECK_DRY_RUN", "1")
+	os.Exit(m.Run())
+}
 
 const testToken = "AAAAAAAAAAAAAAAAAAAAAA.0123456789abcdef0123456789abcdef0123456789a"
 

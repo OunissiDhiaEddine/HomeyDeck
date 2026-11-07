@@ -24,7 +24,18 @@ const (
 	runValue         = "HomeyDeck"
 	uninstallKeyPath = `Software\Microsoft\Windows\CurrentVersion\Uninstall\HomeyDeck`
 	exeName          = "homeydeck-agent.exe"
+
+	canProtect   = true // the token is sealed with DPAPI (dpapi_windows.go)
+	appEntryName = "Windows Settings → Apps"
+	againHint    = "Or copy it on this PC and double-click homeydeck-agent.exe again."
+	removeHint   = "To remove it, use Windows Settings → Apps, or double-click this file again."
 )
+
+func osName() string { return "Windows" }
+
+// wakeHint is for Linux, where Wake-on-LAN is often off; Windows keeps the
+// network card's own setting.
+func wakeHint() string { return "" }
 
 var (
 	kernel32           = windows.NewLazySystemDLL("kernel32.dll")

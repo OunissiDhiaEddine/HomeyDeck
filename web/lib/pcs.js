@@ -4,7 +4,9 @@
  * Every key is scoped to the owner's uid and the PC's id, which is the
  * SHA-256 of the agent's secret. The agent's token is "<uid>.<secret>", so
  * the server can name the agent's keys straight from the token, and a
- * request for another user's PC simply finds no key.
+ * request for another user's PC simply finds no key. On a dual-boot PC the
+ * agent on the second system gets "<uid>.<pc>.<signature>" instead (see
+ * signAgentLink), and both systems report into the same PC.
  *
  *   pcs:{uid}             set of the user's PC ids
  *   pc:{uid}:{pc}         hash: name, hostname, mac and host (encrypted), port, created
@@ -13,7 +15,8 @@
  *   woke:{uid}:{pc}       when a wake packet was last sent (3 minutes)
  *   power:{uid}:{pc}      a sleep or restart that just succeeded (10 minutes)
  *   res:{uid}:{pc}:{id}   the agent's answer to one command (60 seconds)
- *   pair:{sha256(code)}   a pairing code waiting for the agent (10 minutes)
+ *   pair:{sha256(code)}   a pairing code waiting for the agent (10 minutes);
+ *                         {uid, pc} when it adds a second system to a PC
  *
  * Upstash bills per command, and the agent polls all day, so a poll is a
  * single command: SET live ... XX GET. XX makes it fail for a removed PC (so
@@ -27,7 +30,7 @@ import net from "node:net";
 import { Resolver, lookup } from "node:dns/promises";
 import { pipeline, command, hash } from "./redis.js";
 import { HttpError, json, body, parse, str } from "./http.js";
-import { randomId, sha256, humanCode, normalizeCode, seal, unseal, hasDataKey } from "./secrets.js";
+import { randomId, sha256, humanCode, normalizeCode, seal, unseal, hasDataKey, signAgentLink, checkAgentLink } from "./secrets.js";
 import { requireUser, sessionParts, maxPcs } from "./accounts.js";
 import { parseMAC, sendMagicPacket } from "./wol.js";
 
@@ -117,6 +120,17 @@ export async function pcsPost(request, env) {
 
   const pc = pcId(data.pc);
   const k = keysFor(uid, pc);
+
+  if (data.action === "link") {
+    // A code for the agent on this PC's other system (dual boot). It joins
+    // this PC, so it shares its name and wake details and takes no extra slot.
+    if (!hasDataKey(env)) throw new HttpError(500, "the server's DATA_KEY isn't set, so a second system can't be added yet");
+    if ((await command(["EXISTS", k.meta], env)) !== 1) throw new HttpError(404, "that PC was removed");
+    const code = humanCode();
+    await command(["SET", `pair:${sha256(normalizeCode(code))}`, JSON.stringify({ uid, pc }), "EX", PAIR_TTL_S], env);
+    const host = new URL(request.url).host;
+    return json({ ok: true, code, text: `${PAIR_PREFIX}${host}/${code}`, expiresIn: PAIR_TTL_S });
+  }
 
   if (data.action === "update") {
     if ((await command(["EXISTS", k.meta], env)) !== 1) throw new HttpError(404, "that PC was removed");
@@ -237,6 +251,7 @@ export function statusView(s, woke, power) {
     // null when the agent is too old to report Sunshine.
     sunshineRunning: typeof s?.sunshineRunning === "boolean" ? online && s.sunshineRunning : null,
     hostname: s?.hostname || null,
+    os: s?.os || null,
     uptimeSeconds: online ? s.uptimeSeconds : null,
     agentVersion: s?.agentVersion || null,
     lastSeen: s?.lastSeen ? new Date(s.lastSeen).toISOString() : null,
@@ -297,15 +312,20 @@ async function wake(request, env, pc) {
 
 // --- the agent (bearer token "<uid>.<secret>") -------------------------------
 
-function agentKeys(request) {
+function agentKeys(request, env) {
   const header = request.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  const [uid, secret, extra] = token.split(".");
-  if (extra !== undefined || !/^[A-Za-z0-9_-]{22}$/.test(uid ?? "") || !/^[A-Za-z0-9_-]{43}$/.test(secret ?? "")) {
-    throw new HttpError(401, "this PC isn't paired with HomeyDeck", "not_paired");
+  const [uid, secret, sig, extra] = token.split(".");
+  const b64 = (v, n) => new RegExp(`^[A-Za-z0-9_-]{${n}}$`).test(v ?? "");
+  const notPaired = () => new HttpError(401, "this PC isn't paired with HomeyDeck", "not_paired");
+  if (extra !== undefined || !b64(uid, 22) || !b64(secret, 43)) throw notPaired();
+  if (sig === undefined) {
+    const pc = sha256(secret);
+    return { uid, pc, ...keysFor(uid, pc) };
   }
-  const pc = sha256(secret);
-  return { uid, pc, ...keysFor(uid, pc) };
+  // A dual-boot PC's second system: "<uid>.<pc>.<signature>".
+  if (!b64(sig, 43) || !checkAgentLink(uid, secret, sig, env)) throw notPaired();
+  return { uid, pc: secret, ...keysFor(uid, secret) };
 }
 
 /** POST /api/agent/pair {code, hostname}: turns a pairing code into an agent token. */
@@ -317,6 +337,7 @@ export async function agentPair(request, env) {
   if (!pending?.uid) throw new HttpError(404, "that pairing code is wrong, used or expired. Make a new one in HomeyDeck → Add PC", "bad_code");
 
   const { uid } = pending;
+  if (pending.pc) return linkAgent(uid, pending.pc, env);
   const [count, flat] = await pipeline([["SCARD", `pcs:${uid}`], ["HMGET", `u:${uid}`, "name", "disabled"]], env);
   if (!flat?.[0] || flat[1] === "1") throw new HttpError(403, "that account no longer exists or is disabled");
   if (count >= maxPcs(env)) throw new HttpError(409, `that account already has ${count} PCs, the most allowed`);
@@ -338,14 +359,23 @@ export async function agentPair(request, env) {
   return json({ ok: true, token: `${uid}.${secret}`, name });
 }
 
+/** Pairs the agent on a dual-boot PC's other system with that same PC. */
+async function linkAgent(uid, pc, env) {
+  const [name, user, exists] = await pipeline([["HGET", `pc:${uid}:${pc}`, "name"], ["HMGET", `u:${uid}`, "name", "disabled"], ["EXISTS", `live:${uid}:${pc}`]], env);
+  if (!user?.[0] || user[1] === "1") throw new HttpError(403, "that account no longer exists or is disabled");
+  if (exists !== 1) throw new HttpError(404, "that PC was removed from HomeyDeck. Add it again", "bad_code");
+  return json({ ok: true, token: `${uid}.${pc}.${signAgentLink(uid, pc, env)}`, name: name || "My PC" });
+}
+
 /** POST /api/agent/poll: stores the status and hands out commands. One command. */
 export async function agentPoll(request, env) {
-  const { live } = agentKeys(request);
+  const { live } = agentKeys(request, env);
   const data = (await request.json().catch(() => null)) ?? {};
   const now = Date.now();
   const fastUntil = Math.min(Number(data.fastUntil) || 0, now + FAST_FOR_MS);
   const report = {
     hostname: str(data.hostname, 64),
+    os: str(data.os, 32) || undefined,
     steamRunning: Boolean(data.steamRunning),
     sunshineRunning: typeof data.sunshineRunning === "boolean" ? data.sunshineRunning : undefined,
     uptimeSeconds: Math.max(0, Math.floor(Number(data.uptimeSeconds) || 0)),
@@ -365,7 +395,7 @@ export async function agentPoll(request, env) {
 
 /** POST /api/agent/result {id, action, ok, error}. One command. */
 export async function agentResult(request, env) {
-  const { uid, pc } = agentKeys(request);
+  const { uid, pc } = agentKeys(request, env);
   const data = await body(request);
   const id = String(data.id ?? "");
   if (!/^[0-9a-f-]{36}$/.test(id)) throw new HttpError(400, "invalid id");

@@ -38,9 +38,12 @@ jobs:
           cache-dependency-path: agent/go.sum
       - run: go vet ./...
       - run: GOOS=windows go vet ./...
+      - run: GOOS=darwin go vet ./...
       - run: go test ./...
       - run: ./build.sh ${{ github.sha }}
       - uses: actions/upload-artifact@v4
         with:
           name: homeydeck-agent
-          path: agent/dist/homeydeck-agent.exe
+          path: |
+            agent/dist/homeydeck-agent.exe
+            agent/dist/homeydeck-agent-linux

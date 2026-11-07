@@ -5,6 +5,7 @@ config.json
 
 # Agent
 agent/dist/
+agent/agent
 *.exe
 
 # OS

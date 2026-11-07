@@ -1,7 +1,7 @@
-//go:build !windows
+//go:build !windows && !linux
 
-// Stand-ins so the agent can be run and tested on macOS/Linux during
-// development. Power actions are only logged, never performed.
+// Stand-ins so the agent can be run and tested on macOS during development.
+// Power actions are only logged, never performed.
 package main
 
 import (
@@ -12,6 +12,16 @@ import (
 )
 
 var started = time.Now()
+
+const (
+	canProtect   = true
+	appEntryName = "the app list"
+	againHint    = "Or copy it and run homeydeck-agent again."
+	removeHint   = "To remove it, run: homeydeck-agent uninstall"
+)
+
+func osName() string   { return "macOS" }
+func wakeHint() string { return "" }
 
 func dataDir() string {
 	if d := os.Getenv("HOMEYDECK_DATA_DIR"); d != "" {

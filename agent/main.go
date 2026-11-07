@@ -1,20 +1,22 @@
-// HomeyDeck agent: a tiny background program for the Windows PC.
+// HomeyDeck agent: a tiny background program for the gaming PC, on Windows
+// or Linux (made for Bazzite; see system_linux.go).
 //
 // It polls the HomeyDeck server over HTTPS, reports whether Steam and
 // Sunshine are running, and carries out launch_steam / sleep / reboot commands.
 //
-// Installing needs no terminal: in HomeyDeck choose Add PC and copy the
-// pairing code, then double-click homeydeck-agent.exe (or type the code into
-// the box it shows). Double-clicking it again, or removing "HomeyDeck agent"
-// in Windows Settings → Apps, uninstalls it and deletes everything it saved.
-// It also uninstalls itself when the PC is removed from the account.
+// Installing on Windows needs no terminal: in HomeyDeck choose Add PC and
+// copy the pairing code, then double-click homeydeck-agent.exe (or type the
+// code into the box it shows). Double-clicking it again, or removing
+// "HomeyDeck agent" in Windows Settings → Apps, uninstalls it and deletes
+// everything it saved. It also uninstalls itself when the PC is removed from
+// the account.
 //
 // The same things work from a terminal:
 //
-//	homeydeck-agent.exe install [--code homey-deck.vercel.app/K7P2X-M9Q4T]
-//	homeydeck-agent.exe uninstall
-//	homeydeck-agent.exe status
-//	homeydeck-agent.exe run       (what starts hidden at sign-in)
+//	homeydeck-agent install [--code homey-deck.vercel.app/K7P2X-M9Q4T]
+//	homeydeck-agent uninstall
+//	homeydeck-agent status
+//	homeydeck-agent run       (what starts hidden at sign-in)
 package main
 
 import (
@@ -40,8 +42,9 @@ var version = "dev"
 
 const appName = "HomeyDeck"
 
-// Config is what the agent keeps in %LOCALAPPDATA%\HomeyDeck\config.json.
-// The token is encrypted with Windows DPAPI on disk.
+// Config is what the agent keeps in config.json in dataDir(). On Windows the
+// token is encrypted with DPAPI; on Linux the file is readable only by its
+// user (0600), like an SSH key.
 type Config struct {
 	ServerURL string `json:"server_url"`
 	Token     string `json:"-"`
@@ -49,8 +52,9 @@ type Config struct {
 
 type configFile struct {
 	ServerURL string `json:"server_url"`
-	Token     string `json:"token_dpapi,omitempty"`
-	AgentKey  string `json:"agent_key,omitempty"` // v0.2, before accounts
+	Token     string `json:"token_dpapi,omitempty"` // Windows
+	Plain     string `json:"token,omitempty"`       // Linux
+	AgentKey  string `json:"agent_key,omitempty"`   // v0.2, before accounts
 }
 
 func main() {
@@ -128,7 +132,7 @@ func interactive() {
 
 	typed := ""
 	for {
-		text, ok := inputBox(appName, "Type the pairing code from HomeyDeck (menu → Add PC), including the address before it, like homey-deck.vercel.app/K7P2X-M9Q4T.\n\nOr copy it on this PC and double-click homeydeck-agent.exe again.", typed)
+		text, ok := inputBox(appName, "Type the pairing code from HomeyDeck (menu → Add PC), including the address before it, like homey-deck.vercel.app/K7P2X-M9Q4T.\n\n"+againHint, typed)
 		if !ok {
 			return
 		}
@@ -155,7 +159,7 @@ func pairInteractive(code PairCode, fromClipboard bool) {
 		messageBox(appName, "Couldn't add this PC: "+err.Error(), mbError)
 		return
 	}
-	messageBox(appName, "This PC is now in HomeyDeck, and the agent is running.\n\nTo remove it, use Windows Settings → Apps, or double-click this file again.", mbInfo)
+	messageBox(appName, "This PC is now in HomeyDeck, and the agent is running.\n\n"+removeHint, mbInfo)
 }
 
 func run() {
@@ -251,6 +255,10 @@ func loadConfig() (Config, error) {
 	if err := json.Unmarshal(raw, &file); err != nil {
 		return Config{}, fmt.Errorf("parsing %s: %w", configPath(), err)
 	}
+	if file.Plain != "" {
+		cfg := Config{ServerURL: file.ServerURL, Token: file.Plain}
+		return cfg, validateConfig(cfg)
+	}
 	if file.Token == "" {
 		return Config{}, errNotPaired // a v0.2 install, from before accounts
 	}
@@ -295,12 +303,20 @@ func saveConfig(cfg Config) error {
 	if err := os.MkdirAll(dataDir(), 0o700); err != nil {
 		return err
 	}
-	sealed, err := protect([]byte(cfg.Token))
-	if err != nil {
-		return fmt.Errorf("encrypting the token: %w", err)
+	file := configFile{ServerURL: cfg.ServerURL, Plain: cfg.Token}
+	if canProtect {
+		sealed, err := protect([]byte(cfg.Token))
+		if err != nil {
+			return fmt.Errorf("encrypting the token: %w", err)
+		}
+		file = configFile{ServerURL: cfg.ServerURL, Token: base64.StdEncoding.EncodeToString(sealed)}
 	}
-	raw, _ := json.MarshalIndent(configFile{ServerURL: cfg.ServerURL, Token: base64.StdEncoding.EncodeToString(sealed)}, "", "  ")
-	return os.WriteFile(configPath(), raw, 0o600)
+	raw, _ := json.MarshalIndent(file, "", "  ")
+	tmp := configPath() + ".new"
+	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, configPath())
 }
 
 // --- commands ----------------------------------------------------------------
@@ -339,7 +355,11 @@ func installFromArgs(args []string) error {
 		return err
 	}
 	fmt.Println("HomeyDeck agent installed and running. It starts hidden every time you sign in.")
-	fmt.Println("Remove it from Windows Settings → Apps, or run: homeydeck-agent uninstall")
+	fmt.Println(removeHint)
+	if hint := wakeHint(); hint != "" {
+		fmt.Println()
+		fmt.Println(hint)
+	}
 	return nil
 }
 
@@ -355,7 +375,7 @@ func install(cfg Config) error {
 		return fmt.Errorf("enabling start at sign-in: %w", err)
 	}
 	if err := registerUninstaller(exe); err != nil {
-		return fmt.Errorf("adding to Windows Settings → Apps: %w", err)
+		return fmt.Errorf("adding %s: %w", appEntryName, err)
 	}
 	if err := startDetached(exe); err != nil {
 		return fmt.Errorf("starting agent: %w", err)
@@ -363,8 +383,9 @@ func install(cfg Config) error {
 	return nil
 }
 
-// uninstall stops the agent, removes it from startup and from Settings → Apps,
-// and deletes %LOCALAPPDATA%\HomeyDeck (the program, its config and its log).
+// uninstall stops the agent, removes it from startup and from Settings → Apps
+// (or the app menu on Linux), and deletes dataDir(): the program, its config
+// and its log.
 func uninstall() error {
 	stopOtherInstances()
 	var errs []error
@@ -372,7 +393,7 @@ func uninstall() error {
 		errs = append(errs, fmt.Errorf("removing start at sign-in: %w", err))
 	}
 	if err := unregisterUninstaller(); err != nil {
-		errs = append(errs, fmt.Errorf("removing from Settings → Apps: %w", err))
+		errs = append(errs, fmt.Errorf("removing %s: %w", appEntryName, err))
 	}
 	if err := removeDataDir(); err != nil {
 		errs = append(errs, fmt.Errorf("deleting files: %w", err))
@@ -389,12 +410,17 @@ func printStatus() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("server:         ", cfg.ServerURL)
+	fmt.Println("server:          ", cfg.ServerURL)
+	fmt.Println("system:          ", osName())
 	steam, sunshine := appsRunning()
-	fmt.Println("steam running:  ", steam)
+	fmt.Println("steam running:   ", steam)
 	fmt.Println("sunshine running:", sunshine)
 	fmt.Println("start at sign-in:", autostartEnabled())
-	fmt.Println("log file:       ", logPath())
+	fmt.Println("log file:        ", logPath())
+	if hint := wakeHint(); hint != "" {
+		fmt.Println()
+		fmt.Println(hint)
+	}
 	return nil
 }
 
