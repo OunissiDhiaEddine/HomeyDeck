@@ -99,6 +99,7 @@ func main() {
 // interactive is what a double-click does: pair with the code on the
 // clipboard, offer to uninstall when it's already set up, or ask for the code.
 func interactive() {
+	defer pauseBeforeClosing()
 	clip := readClipboard()
 	if code, err := parsePairCode(clip); err == nil {
 		if !messageBox(appName, fmt.Sprintf("Add this PC to HomeyDeck at %s?\n\nThe agent runs hidden in the background and starts when you sign in.", code.host()), mbYesNo) {

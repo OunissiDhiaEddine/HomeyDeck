@@ -52,3 +52,21 @@ func TestLinuxTokenFileIsPrivate(t *testing.T) {
 		t.Fatalf("config.json = %s", raw)
 	}
 }
+
+// Without kdialog or zenity (Fedora Workstation), the app menu entry opens a
+// terminal that waits before closing, so uninstalling still works.
+func TestLinuxMenuEntryWithoutDialogTools(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("HOMEYDECK_DATA_DIR", dir)
+	t.Setenv("PATH", t.TempDir())
+	if err := registerUninstaller("/opt/x/homeydeck-agent"); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(desktopPath())
+	for _, want := range []string{"Terminal=true", `Exec=env HOMEYDECK_PAUSE=1 "/opt/x/homeydeck-agent"`, "Icon=" + iconPath()} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("entry lacks %q:\n%s", want, raw)
+		}
+	}
+}

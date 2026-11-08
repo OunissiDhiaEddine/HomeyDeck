@@ -109,6 +109,15 @@ func inputBox(title, prompt, initial string) (string, bool) {
 	return strings.TrimSpace(string(out)), err == nil
 }
 
+// pauseBeforeClosing keeps the terminal the app menu entry opened (see
+// registerUninstaller) on screen until the answer has been read.
+func pauseBeforeClosing() {
+	if os.Getenv("HOMEYDECK_PAUSE") == "1" && interactiveTerminal() {
+		fmt.Print("\nPress Enter to close.")
+		_, _ = stdin.ReadString('\n')
+	}
+}
+
 func have(name string) bool {
 	_, err := exec.LookPath(name)
 	return err == nil
