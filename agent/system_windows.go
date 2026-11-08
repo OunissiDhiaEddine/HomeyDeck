@@ -33,6 +33,8 @@ const (
 
 func osName() string { return "Windows" }
 
+func pauseBeforeClosing() {}
+
 // wakeHint is for Linux, where Wake-on-LAN is often off; Windows keeps the
 // network card's own setting.
 func wakeHint() string { return "" }

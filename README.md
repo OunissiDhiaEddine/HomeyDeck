@@ -38,6 +38,8 @@ To **remove** the agent, use Windows **Settings → Apps → HomeyDeck agent →
 
 On Linux the agent lives only in your home folder (no rpm-ostree layering, no root): `~/.local/share/homeydeck/`, a systemd user service and an app menu entry called **HomeyDeck agent** with the HomeyDeck icon. Open that entry, or run `~/.local/share/homeydeck/homeydeck-agent uninstall`, to remove it all; removing the PC in HomeyDeck does the same. To update it, paste the Linux command again. `~/.local/share/homeydeck/homeydeck-agent status` also checks that Wake-on-LAN is on for the network card, which Linux often leaves off, and prints the one `nmcli` command that turns it on.
 
+The Linux agent also works on **Fedora Workstation** and other x86-64 desktops with systemd and NetworkManager. Install Steam from RPM Fusion or Flathub (the agent finds either). Fedora doesn't sign in by itself the way Bazzite does, and the agent starts when you sign in, so turn on **Settings → System → Users → Automatic Login** if you want HomeyDeck to see the PC right after waking it from a full shutdown (waking from sleep needs nothing).
+
 ## How it works
 
 ```

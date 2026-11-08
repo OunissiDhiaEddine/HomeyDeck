@@ -370,16 +370,22 @@ func registerUninstaller(exe string) error {
 	if err := os.WriteFile(iconPath(), iconPNG, 0o644); err != nil {
 		return err
 	}
+	// Without kdialog or zenity (Fedora Workstation ships neither), the entry
+	// opens a terminal instead, which waits for Enter before it closes.
+	execLine, terminal := fmt.Sprintf("%q", exe), "false"
+	if !have("kdialog") && !have("zenity") {
+		execLine, terminal = fmt.Sprintf("env HOMEYDECK_PAUSE=1 %q", exe), "true"
+	}
 	entry := fmt.Sprintf(`[Desktop Entry]
 Type=Application
 Name=HomeyDeck agent
 Comment=Wake and control this PC from HomeyDeck. Open to remove it.
-Exec=%q
+Exec=%s
 Icon=%s
-Terminal=false
+Terminal=%s
 Categories=Utility;
 StartupNotify=false
-`, exe, iconPath())
+`, execLine, iconPath(), terminal)
 	if err := os.MkdirAll(filepath.Dir(desktopPath()), 0o755); err != nil {
 		return err
 	}

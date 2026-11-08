@@ -20,8 +20,9 @@ const (
 	removeHint   = "To remove it, run: homeydeck-agent uninstall"
 )
 
-func osName() string   { return "macOS" }
-func wakeHint() string { return "" }
+func osName() string      { return "macOS" }
+func pauseBeforeClosing() {}
+func wakeHint() string    { return "" }
 
 func dataDir() string {
 	if d := os.Getenv("HOMEYDECK_DATA_DIR"); d != "" {

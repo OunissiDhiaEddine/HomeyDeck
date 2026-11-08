@@ -104,7 +104,7 @@ Skip this if you only want status, Steam and sleep/restart, not Wake.
 
 The agent installs itself for your Windows user, starts hidden, and starts again whenever you sign in to Windows. HomeyDeck shows the PC as online within a few seconds. Turn on automatic sign-in in Windows if you want Steam ready right after waking the PC from a full shutdown.
 
-On **Linux** (made for Bazzite), tap **Copy Linux command** on the pairing screen instead, on the PC, and paste it into a terminal (Konsole in Desktop Mode). The agent installs into your home folder only, runs as a systemd user service, and adds **HomeyDeck agent** to the app menu, which removes it again. On a **dual-boot** PC, pair one system first, then open the PC's **Settings** in HomeyDeck, choose **Dual boot? Add its other system** and pair the other one: both share one PC in the app.
+On **Linux** (made for Bazzite; Fedora Workstation works too, with Automatic Login turned on in Settings → System → Users so the agent starts after a cold boot), tap **Copy Linux command** on the pairing screen instead, on the PC, and paste it into a terminal (Konsole in Desktop Mode). The agent installs into your home folder only, runs as a systemd user service, and adds **HomeyDeck agent** to the app menu, which removes it again. On a **dual-boot** PC, pair one system first, then open the PC's **Settings** in HomeyDeck, choose **Dual boot? Add its other system** and pair the other one: both share one PC in the app.
 
 Each account can have up to 3 PCs. To change that, add `MAX_PCS_PER_USER` in Vercel (`0` means no limit) and redeploy.
 
