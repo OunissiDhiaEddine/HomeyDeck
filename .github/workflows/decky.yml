@@ -1,0 +1,53 @@
+name: Decky plugin
+
+on:
+  push:
+    branches: [main]
+    paths: ["decky/**", ".github/workflows/decky.yml"]
+  pull_request:
+    paths: ["decky/**", ".github/workflows/decky.yml"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag for the plugin zip, like decky-v0.1.0 (leave empty to only build)
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  plugin:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+    env:
+      REDIS_URL: redis://localhost:6379
+    defaults:
+      run:
+        working-directory: decky
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: ./package.sh
+      - run: npm run typecheck
+      - run: npm test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HomeyDeck-decky
+          path: decky/out/HomeyDeck.zip
+      # Never marked "latest", so the agents' releases/latest download links keep working.
+      - name: Release
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag }}
+        run: |
+          gh release create "$TAG" out/HomeyDeck.zip \
+            --target "$GITHUB_SHA" \
+            --title "HomeyDeck for Steam Deck $TAG" \
+            --latest=false \
+            --notes "Decky Loader plugin. On the Steam Deck: Decky settings → Developer → Install Plugin from ZIP, and pick HomeyDeck.zip."
