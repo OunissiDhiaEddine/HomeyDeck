@@ -1,0 +1,11 @@
+{
+  "name": "HomeyDeck",
+  "author": "OunissiDhiaEddine",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["remote play", "wake on lan", "utility"],
+    "description": "Wake your gaming PC, see if Steam and Sunshine are running, launch Steam, and sleep or restart it, from the Quick Access menu. Uses your HomeyDeck account.",
+    "image": "https://raw.githubusercontent.com/OunissiDhiaEddine/HomeyDeck/main/web/public/og.png"
+  }
+}
