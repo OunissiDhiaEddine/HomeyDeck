@@ -55,6 +55,34 @@ body {
   padding: calc(env(safe-area-inset-top) + 10px) 16px 0;
 }
 .brand { font-weight: 600; color: var(--muted); letter-spacing: 0.01em; }
+.bar-actions { display: flex; align-items: center; gap: 8px; }
+.home-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 14px 0 11px;
+  border-radius: 999px;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.home-link[hidden] { display: none; }
+.home-link svg { width: 18px; height: 18px; color: #f5b14c; }
+/* Icon only when space is short: tiny screens, or phones that also show the PC picker. */
+@media (max-width: 380px) {
+  .home-link span { display: none; }
+  .home-link { padding: 0 11px; }
+}
+@media (max-width: 440px) {
+  .bar:has(.pc-picker:not([hidden])) .home-link span { display: none; }
+  .bar:has(.pc-picker:not([hidden])) .home-link { padding: 0 11px; }
+}
 
 .icon-btn {
   display: grid;
