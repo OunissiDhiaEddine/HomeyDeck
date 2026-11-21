@@ -80,8 +80,6 @@ async function loadSession() {
     state.maxPcs = data.maxPcs;
     state.agentUrl = data.agentUrl;
     state.agentLinuxUrl = data.agentLinuxUrl;
-    // Homey Home only lets the admin in (plus its HOME_USERS), so only the admin gets the button.
-    $("home-link").hidden = state.user.role !== "admin";
     let saved = null;
     try {
       saved = localStorage.getItem(PC_STORAGE);
